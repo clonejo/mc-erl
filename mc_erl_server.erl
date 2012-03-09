@@ -1,4 +1,4 @@
--module(server).
+-module(mc_erl_server).
 -export([start/0, start/1, stop/1, accept/1, supervisor/4, loop/3]).
 
 -define(enchantable, [

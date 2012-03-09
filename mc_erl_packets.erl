@@ -1,4 +1,4 @@
--module(packets).
+-module(mc_erl_packets).
 -export([get_by_id/1, get_by_name/1]).
 
 get_by_id(Id) ->
