@@ -22,7 +22,10 @@
 	16#136, 16#137, 16#138, 16#139, %DIAMOND
 	16#13A, 16#13B, 16#13C, 16#13D]). %GOLD
 
+% ======================================================================
 % decoding
+% ======================================================================
+
 decode_packet(Socket) ->
 	Recv = gen_tcp:recv(Socket, 1, 10000),
 	case Recv of
@@ -44,6 +47,7 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			byte -> read_byte(Socket);
 			ubyte -> read_ubyte(Socket);
 			short -> read_short(Socket);
+			ushort -> read_ushort(Socket);
 			int -> read_int(Socket);
 			long -> read_long(Socket);
 			float -> read_float(Socket);
@@ -54,7 +58,9 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			slot -> read_slot(Socket);
 			chunk_data -> read_chunk_data(Socket);
 			multi_block_change_data -> read_multi_block_change_data(Socket);
-			X -> {error, unknown_datatype, X}
+			_ ->
+				io:format("[~w] unknown datatype: ~p~n", [?MODULE, TypeParam]),
+				{error, unknown_datatype, TypeParam}
 		end|Output]).
 
 read_bool(Socket) ->
@@ -71,6 +77,10 @@ read_ubyte(Socket) ->
 
 read_short(Socket) ->
 	{ok, <<N:16/signed>>} = gen_tcp:recv(Socket, 2),
+	N.
+
+read_ushort(Socket) ->
+	{ok, <<N:16/unsigned>>} = gen_tcp:recv(Socket, 2),
 	N.
 
 read_int(Socket) ->
@@ -166,16 +176,19 @@ read_slots(Socket, Output, RemainingSlots) ->
 read_chunk_data(Socket) ->
 	Length = read_int(Socket),
 	_ = read_int(Socket),
-	io:format("[~w] got chunk with compressed data length=~p~n", [?MODULE, Length]),
 	{ok, Bin} = gen_tcp:recv(Socket, Length),
 	{raw, Bin}.
 
+%% data is unparsed
 read_multi_block_change_data(Socket) ->
-	ArraySize = read_short(Socket),
-	{ok, Bin} = gen_tcp:recv(Socket, 4*ArraySize),
-	{raw, ArraySize, Bin}.
+	DataSize = read_int(Socket),
+	{ok, Bin} = gen_tcp:recv(Socket, DataSize),
+	{raw, DataSize, Bin}.
 
+% ======================================================================
 % encoding
+% ======================================================================
+
 encode_packet({Name, ParamList}) ->
 	{Id, Name, TypeParamList} = mc_erl_packets:get_by_name(Name),
 	case length(TypeParamList) of
@@ -197,6 +210,7 @@ encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 		byte -> encode_byte(P);
 		ubyte -> encode_ubyte(P);
 		short -> encode_short(P);
+		ushort -> encode_ushort(P);
 		int -> encode_int(P);
 		long -> encode_long(P);
 		float -> encode_float(P);
@@ -225,6 +239,9 @@ encode_ubyte(N) ->
 
 encode_short(N) ->
 	<<N:16/signed>>.
+
+encode_ushort(N) ->
+	<<N:16/unsigned>>.
 
 encode_int(N) ->
 	<<N:32/signed>>.
@@ -306,5 +323,7 @@ encode_slots([Slot|Rest], Output) ->
 encode_chunk_data({raw, Bin}) ->
 	[encode_int(byte_size(Bin)), encode_int(0), Bin].
 
-encode_multi_block_change_data({raw, ArraySize, Bin}) ->
-	[encode_short(ArraySize), Bin].
+encode_multi_block_change_data({raw, DataSize, Bin}) ->
+	[encode_int(DataSize), Bin].
+
+
