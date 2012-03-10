@@ -95,7 +95,7 @@ get_by_id(Id) ->
 			{53, block_change, [int, byte, int, byte, byte]};
 		54 ->
 			{54, block_action, [int, short, int, byte, byte]};
-		60 -> % not supported, who needs tnt ?!?
+		60 ->
 			{60, explosion, [double, double, double, float, coordinate_offsets]};
 		61 ->
 			{61, sound_particle_effect, [int, int, byte, int, int]};

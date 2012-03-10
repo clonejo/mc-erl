@@ -1,14 +1,27 @@
+#!/usr/bin/env python
 import os
 
-if os.name == "nt":
-	pattern = "echo compiling %s\n d:/erl5.9/bin/erlc.exe -o ebin %s\n\n"
-	prologue = "@echo off\ndel ebin/*\n\n"
-elif os.name == "posix":
-	pattern = "echo compiling %s\n erlc -o ebin %s\n\n"
-	prologue = "#!/bin/sh\nrm ebin/*\n\n"
+win_erlc_path = "d:/erl5.9/bin/erlc.exe"
+linux_erlc_path = "erlc"
+makefile_name = "make.bat" if os.name == "nt" else "make.sh"
 
-files = os.listdir(".")
-mkf = open("make.bat" if os.name == "nt" else "make.sh", "w")
+if not os.access("ebin", os.F_OK):
+	os.mkdir("ebin")
+
+if os.name == "nt":
+	pattern = "echo compiling %%s\n %s -o ../ebin %%s\n\n" % (win_erlc_path,)
+	prologue = """@echo off
+del /Q ebin
+cd src\n\n"""
+
+elif os.name == "posix":
+	pattern = "echo compiling %%s\n %s -o ../ebin %%s\n\n" % (linux_erlc_path,)
+	prologue = """#!/bin/sh
+rm ebin/*
+cd src\n\n"""
+
+files = os.listdir("./src")
+mkf = open(makefile_name, "w")
 mkf.write(prologue)
 
 f2 = []
@@ -21,3 +34,4 @@ for f in f2:
 	mkf.write(pattern % (f,f))
 
 mkf.close()
+os.chmod(makefile_name, 777)
