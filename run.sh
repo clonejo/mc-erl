@@ -1,2 +1,2 @@
 #!/bin/sh
-exec erl -pa $PWD/ebin -boot start_sasl -s mc_erl_app
+exec erl -pa $PWD/ebin -boot -s mc_erl_app
