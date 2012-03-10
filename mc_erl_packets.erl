@@ -6,8 +6,8 @@ get_by_id(Id) ->
 		0 ->
 			{0, keep_alive, [int]};
 		1 ->
-			{1, login_request, [int, string, long, string,
-			                    int, byte, byte, ubyte, ubyte]};
+			{1, login_request, [int, string, string, int, int,
+			                    byte, ubyte, ubyte]};
 		2 ->
 			{2, handshake, [string]};
 		3 ->
@@ -23,7 +23,7 @@ get_by_id(Id) ->
 		8 ->
 			{8, update_health, [short, short, float]};
 		9 ->
-			{9, respawn, [byte, byte, byte, short, long, string]};
+			{9, respawn, [int, byte, byte, short, string]};
 		10 ->
 			{10, player, [bool]};
 		11 ->
@@ -56,7 +56,7 @@ get_by_id(Id) ->
 		23 -> % no fireballs supported!
 			{23, add_object, [int, byte, int, int, int, int]}; 
 		24 ->
-			{24, mob_spawn, [int, byte, int, int, int, byte, byte, metadata]};
+			{24, mob_spawn, [int, byte, int, int, int, byte, byte, byte, metadata]};
 		26 ->
 			{26, experience_orb, [int, int, int, int, short]};
 		28 ->
@@ -71,6 +71,8 @@ get_by_id(Id) ->
 			{33, entity_look_move, [int, byte, byte, byte, byte, byte]};
 		34 ->
 			{34, entity_teleport, [int, int, int, int, byte, byte]};
+		35 ->
+			{35, entity_head_look, [int, byte]};
 		38 ->
 			{38, entity_status, [int, byte]};
 		39 ->
@@ -86,9 +88,9 @@ get_by_id(Id) ->
 		50 ->
 			{50, pre_chunk, [int, int, bool]};
 		51 ->
-			{51, map_chunk, [int, short, int, byte, byte, byte, chunk_data]};
+			{51, map_chunk, [int, int, boolean, ushort, ushort, chunk_data]};
 		52 ->
-			{52, multi_block_change, [int, int, multi_block_change_data]};
+			{52, multi_block_change, [int, int, short, multi_block_change_data]};
 		53 ->
 			{53, block_change, [int, byte, int, byte, byte]};
 		54 ->
@@ -165,6 +167,7 @@ get_by_name(Name) ->
 		entity_look -> 32;
 		entity_look_move -> 33;
 		entity_teleport -> 34;
+		entity_head_look -> 35;
 		entity_status -> 38;
 		attach_entity -> 39;
 		entity_metadata -> 40;
