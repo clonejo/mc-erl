@@ -88,7 +88,7 @@ get_by_id(Id) ->
 		50 ->
 			{50, pre_chunk, [int, int, bool]};
 		51 ->
-			{51, map_chunk, [int, int, boolean, ushort, ushort, chunk_data]};
+			{51, map_chunk, [int, int, bool, ushort, ushort, chunk_data]};
 		52 ->
 			{52, multi_block_change, [int, int, short, multi_block_change_data]};
 		53 ->
@@ -121,6 +121,8 @@ get_by_id(Id) ->
 			{107, creative_inventory_action, [short, slot]};
 		108 ->
 			{108, enchant_item, [byte, byte]};
+		132 ->
+			{132, update_tile_entity, [int, short, int, byte, int, int, int]};
 		200 ->
 			{200, increment_statistic, [int, byte]};
 		201 ->
@@ -191,6 +193,7 @@ get_by_name(Name) ->
 		transaction -> 106;
 		creative_inventory_action -> 107;
 		enchant_item -> 108;
+		update_tile_entity -> 132;
 		increment_statistic -> 200;
 		player_list_item -> 201;
 		server_list_ping -> 254;
