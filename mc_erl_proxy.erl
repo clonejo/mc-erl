@@ -71,7 +71,7 @@ server_to_client(ClientSocket, ServerSocket, File) ->
 			server_to_client(ClientSocket, ServerSocket, File);
 		{error, Reason} ->
 			io:format("[~s] [C<-S] stopping with ~p~n", [?MODULE, {error, Reason}]),
-			file:close(File),
+			%file:close(File), % log file should be closed externally
 			{error, Reason}
 	end.
 
@@ -84,7 +84,7 @@ client_to_server(ClientSocket, ServerSocket, File) ->
 			client_to_server(ClientSocket, ServerSocket, File);
 		{error, Reason} ->
 			io:format("[~s] [C->S] stopping with ~p~n", [?MODULE, {error, Reason}]),
-			file:close(File),
+			%file:close(File), % log file should be closed externally
 			{error, Reason}
 	end.
 

@@ -129,7 +129,7 @@ read_metadata(Socket, Output) ->
 			read_metadata(Socket, [O|Output])
 	end.
 
-% does not support items that can have enchantments!
+%% enchantment information is not parsed
 read_slot(Socket) ->
 	case read_short(Socket) of
 		-1 -> empty;
@@ -158,12 +158,15 @@ read_slots(Socket) ->
 read_slots(_Socket, Output, 0) ->
 	lists:reverse(Output);
 
-% does not support items that can have enchantments!
+%% enchantment information is not parsed
 read_slots(Socket, Output, RemainingSlots) ->
 	read_slots(Socket, [read_slot(Socket)|Output], RemainingSlots-1).
 
+%% chunks are unparsed
 read_chunk_data(Socket) ->
 	Length = read_int(Socket),
+	_ = read_int(Socket),
+	io:format("[~w] got chunk with compressed data length=~p~n", [?MODULE, Length]),
 	{ok, Bin} = gen_tcp:recv(Socket, Length),
 	{raw, Bin}.
 
@@ -298,11 +301,10 @@ encode_slots([], Output) ->
 	lists:reverse(Output);
 
 encode_slots([Slot|Rest], Output) ->
-	encode_slots(Rest, [
-		encode_slot(Slot)|Output]).
+	encode_slots(Rest, [encode_slot(Slot)|Output]).
 			
 encode_chunk_data({raw, Bin}) ->
-	[encode_int(byte_size(Bin)), Bin].
+	[encode_int(byte_size(Bin)), encode_int(0), Bin].
 
 encode_multi_block_change_data({raw, ArraySize, Bin}) ->
 	[encode_short(ArraySize), Bin].
