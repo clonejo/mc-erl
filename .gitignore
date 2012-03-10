@@ -1,3 +1,4 @@
 *.beam
-make.bat
+*.bat
 *~
+log

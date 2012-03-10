@@ -58,6 +58,7 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			slot -> read_slot(Socket);
 			chunk_data -> read_chunk_data(Socket);
 			multi_block_change_data -> read_multi_block_change_data(Socket);
+			coordinate_offsets -> read_coordinate_offsets(Socket);
 			_ ->
 				io:format("[~w] unknown datatype: ~p~n", [?MODULE, TypeParam]),
 				{error, unknown_datatype, TypeParam}
@@ -185,6 +186,12 @@ read_multi_block_change_data(Socket) ->
 	{ok, Bin} = gen_tcp:recv(Socket, DataSize),
 	{raw, DataSize, Bin}.
 
+%% coordinates are unparsed also
+read_coordinate_offsets(Socket) ->
+	OffsetsNum = read_int(Socket),
+	{ok, Bin} = gen_tcp:recv(Socket, 3*OffsetsNum),
+	{raw, OffsetsNum, Bin}.
+
 % ======================================================================
 % encoding
 % ======================================================================
@@ -221,6 +228,7 @@ encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 		slots -> encode_slots(P);
 		chunk_data -> encode_chunk_data(P);
 		multi_block_change_data -> encode_multi_block_change_data(P);
+		coordinate_offsets -> encode_coordinate_offsets(P);
 		X -> {error, unknown_datatype, X}
 	end,
 	encode_param_list(ParamList, TypeParamList, [O|Output]).
@@ -326,4 +334,5 @@ encode_chunk_data({raw, Bin}) ->
 encode_multi_block_change_data({raw, DataSize, Bin}) ->
 	[encode_int(DataSize), Bin].
 
-
+encode_coordinate_offsets({raw, OffsetsNum, Bin}) ->
+	[encode_int(OffsetsNum), Bin].

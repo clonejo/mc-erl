@@ -181,6 +181,7 @@ get_by_name(Name) ->
 		multi_block_change -> 52;
 		block_change -> 53;
 		block_action -> 54;
+		explosion -> 60;
 		sound_particle_effect -> 61;
 		new_invalid_state -> 70;
 		thunderbolt -> 71;
