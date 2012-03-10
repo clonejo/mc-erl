@@ -5,19 +5,14 @@ win_erlc_path = "d:/erl5.9/bin/erlc.exe"
 linux_erlc_path = "erlc"
 makefile_name = "make.bat" if os.name == "nt" else "make.sh"
 
-if not os.access("ebin", os.F_OK):
-	os.mkdir("ebin")
-
 if os.name == "nt":
 	pattern = "echo compiling %%s\n %s -o ../ebin %%s\n\n" % (win_erlc_path,)
 	prologue = """@echo off
-del /Q ebin
 cd src\n\n"""
 
 elif os.name == "posix":
 	pattern = "echo compiling %%s\n %s -o ../ebin %%s\n\n" % (linux_erlc_path,)
-	prologue = """#!/bin/sh
-rm ebin/*
+	prologue = """#!/bin/bash
 cd src\n\n"""
 
 files = os.listdir("./src")
@@ -34,4 +29,4 @@ for f in f2:
 	mkf.write(pattern % (f,f))
 
 mkf.close()
-os.chmod(makefile_name, 777)
+os.chmod(makefile_name, 0777)
