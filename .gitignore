@@ -1,4 +1,6 @@
 *.beam
 *.bat
+*.sh
+*.dump
 *~
-log
+*.log
