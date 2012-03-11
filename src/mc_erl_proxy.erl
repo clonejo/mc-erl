@@ -58,11 +58,7 @@ handle_cast(stop, State) ->
 	io:format("[~s] stopping~n", [?MODULE]),
 	{stop, normal, State};
 
-<<<<<<< HEAD
-handle_cast(_, State) ->
-=======
 handle_cast(Message, State) ->
->>>>>>> upstream/master
 	io:format("[~s] received cast: ~p~n", [?MODULE, Message]),
 	{noreply, State}.
 
