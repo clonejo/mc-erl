@@ -10,3 +10,4 @@ How to get it running:
 11. 1> mc_erl_app:start([], []).
 
 The proxy will be available at 127.0.0.1:25566 and it proxies to 127.0.0.1:25565.
+Be aware the log files can get quite big (some 100MB).
