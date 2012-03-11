@@ -180,7 +180,8 @@ read_chunk_data(Socket) ->
 	Length = read_int(Socket),
 	_ = read_int(Socket),
 	{ok, Bin} = gen_tcp:recv(Socket, Length),
-	{raw, Bin}.
+	Uncompressed = zlib:uncompress(Bin),
+	{uncompressed, Uncompressed}.
 
 read_multi_block_change_data(Socket) ->
 	RecordCount = read_short(Socket),
@@ -343,6 +344,9 @@ encode_slots([Slot|Rest], Output) ->
 	encode_slots(Rest, [encode_slot(Slot)|Output]).
 			
 encode_chunk_data({raw, Bin}) ->
+	[encode_int(byte_size(Bin)), encode_int(0), Bin];
+encode_chunk_data({uncompressed, Uncompressed}) ->
+	Bin = zlib:compress(Uncompressed),
 	[encode_int(byte_size(Bin)), encode_int(0), Bin].
 
 	
