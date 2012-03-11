@@ -50,8 +50,9 @@ handle_cast({new_connection, ClientSocket}, State) ->
 		FileName = "../log/" ++ integer_to_list(random:uniform(999999)) ++ ".log",
 		io:format("[~s] logging to: ~p~n", [?MODULE, FileName]),
 		{ok, File} = file:open(FileName, write),
-		spawn_link(fun() -> server_to_client(ClientSocket, ServerSocket, File) end),
-		client_to_server(ClientSocket, ServerSocket, File) end),
+		LogHandler = spawn(fun() -> log_handler(File) end),
+		spawn_link(fun() -> server_to_client(ClientSocket, ServerSocket, LogHandler) end),
+		client_to_server(ClientSocket, ServerSocket, LogHandler) end),
 	{noreply, State};
 
 handle_cast(stop, State) ->
@@ -62,29 +63,36 @@ handle_cast(Message, State) ->
 	io:format("[~s] received cast: ~p~n", [?MODULE, Message]),
 	{noreply, State}.
 
-server_to_client(ClientSocket, ServerSocket, File) ->
+log_handler(File) ->
+	receive
+		{log, String, Args} ->
+			io:format(File, String, Args),
+			log_handler(File)
+		after 5000 ->
+			file:close(File)
+	end.
+
+server_to_client(ClientSocket, ServerSocket, LogHandler) ->
 	case mc_erl_protocol:decode_packet(ServerSocket) of
 		{ok, Packet} ->
-			io:format(File, "[C<-S] packet: ~p~n", [Packet]),
+			LogHandler ! {log, "[C<-S] packet: ~p~n", [Packet]},
 			Bin = mc_erl_protocol:encode_packet(Packet),
 			gen_tcp:send(ClientSocket, Bin),
-			server_to_client(ClientSocket, ServerSocket, File);
+			server_to_client(ClientSocket, ServerSocket, LogHandler);
 		{error, Reason} ->
 			io:format("[~s] [C<-S] stopping with ~p~n", [?MODULE, {error, Reason}]),
-			%file:close(File), % log file should be closed externally
 			{error, Reason}
 	end.
 
-client_to_server(ClientSocket, ServerSocket, File) ->
+client_to_server(ClientSocket, ServerSocket, LogHandler) ->
 	case mc_erl_protocol:decode_packet(ClientSocket) of
 		{ok, Packet} ->
-			io:format(File, "[C->S] packet: ~p~n", [Packet]),
+			LogHandler ! {log, "[C<-S] packet: ~p~n", [Packet]},
 			Bin = mc_erl_protocol:encode_packet(Packet),
 			gen_tcp:send(ServerSocket, Bin),
-			client_to_server(ClientSocket, ServerSocket, File);
+			client_to_server(ClientSocket, ServerSocket, LogHandler);
 		{error, Reason} ->
 			io:format("[~s] [C->S] stopping with ~p~n", [?MODULE, {error, Reason}]),
-			%file:close(File), % log file should be closed externally
 			{error, Reason}
 	end.
 
