@@ -87,7 +87,7 @@ server_to_client(ClientSocket, ServerSocket, LogHandler) ->
 client_to_server(ClientSocket, ServerSocket, LogHandler) ->
 	case mc_erl_protocol:decode_packet(ClientSocket) of
 		{ok, Packet} ->
-			LogHandler ! {log, "[C<-S] packet: ~p~n", [Packet]},
+			LogHandler ! {log, "[C->S] packet: ~p~n", [Packet]},
 			Bin = mc_erl_protocol:encode_packet(Packet),
 			gen_tcp:send(ServerSocket, Bin),
 			client_to_server(ClientSocket, ServerSocket, LogHandler);
