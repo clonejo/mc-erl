@@ -90,7 +90,7 @@ get_by_id(Id) ->
 		51 ->
 			{51, map_chunk, [int, int, bool, ushort, ushort, chunk_data]};
 		52 ->
-			{52, multi_block_change, [int, int, short, multi_block_change_data]};
+			{52, multi_block_change, [int, int, multi_block_change_data]};
 		53 ->
 			{53, block_change, [int, byte, int, byte, byte]};
 		54 ->

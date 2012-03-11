@@ -180,11 +180,19 @@ read_chunk_data(Socket) ->
 	{ok, Bin} = gen_tcp:recv(Socket, Length),
 	{raw, Bin}.
 
-%% data is unparsed
 read_multi_block_change_data(Socket) ->
-	DataSize = read_int(Socket),
-	{ok, Bin} = gen_tcp:recv(Socket, DataSize),
-	{raw, DataSize, Bin}.
+	RecordCount = read_short(Socket),
+	_ = read_int(Socket),
+	{multi_block_change_data, RecordCount, read_multi_block_change_datasets(Socket, RecordCount)}.
+
+read_multi_block_change_datasets(Socket, RecordCount) -> read_multi_block_change_datasets(Socket, RecordCount, []).
+
+read_multi_block_change_datasets(_Socket, 0, DeltaBlocks) -> lists:reverse(DeltaBlocks);
+read_multi_block_change_datasets(Socket, RecordCount, DeltaBlocks) ->
+	{ok, Raw} = gen_tcp:recv(Socket, 4),
+	<<DX:4/unsigned, DZ:4/unsigned, DY:8/unsigned, BlockID:12/unsigned, Metadata:4/unsigned>> = Raw,
+	read_multi_block_change_datasets(Socket, RecordCount - 1, [{DX, DZ, DY, BlockID, Metadata}|DeltaBlocks]).
+	
 
 %% coordinates are unparsed also
 read_coordinate_offsets(Socket) ->
@@ -331,8 +339,16 @@ encode_slots([Slot|Rest], Output) ->
 encode_chunk_data({raw, Bin}) ->
 	[encode_int(byte_size(Bin)), encode_int(0), Bin].
 
-encode_multi_block_change_data({raw, DataSize, Bin}) ->
-	[encode_int(DataSize), Bin].
+	
+encode_multi_block_change_datasets(BlockDelta) -> encode_multi_block_change_datasets(BlockDelta, []).
+
+encode_multi_block_change_datasets([], Delta) -> lists:reverse(Delta);
+encode_multi_block_change_datasets([{DX, DZ, DY, BlockID, Metadata}|Rest], Delta) -> 
+	encode_multi_block_change_datasets(Rest, [<<DX:4, DZ:4, DY:8, BlockID:12, Metadata:4>>|Delta]).
+
+encode_multi_block_change_data({multi_block_change_data, RecordsNum, BlockDelta}) ->
+	Delta = list_to_binary(encode_multi_block_change_datasets(BlockDelta)),
+	[encode_short(RecordsNum), encode_int(byte_size(Delta)), Delta].
 
 encode_coordinate_offsets({raw, OffsetsNum, Bin}) ->
 	[encode_int(OffsetsNum), Bin].
