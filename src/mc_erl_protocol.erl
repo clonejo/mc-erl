@@ -2,6 +2,8 @@
 
 -export([decode_packet/1, encode_packet/1]).
 
+-include("records.hrl").
+
 -define(enchantable, [
 	16#103, %Flint and steel
 	16#105, %Bow
@@ -100,6 +102,15 @@ read_double(Socket) ->
 	{ok, <<N:64/float>>} = gen_tcp:recv(Socket, 8),
 	N.
 
+read_bit_set(Socket, Bytes) ->
+	{ok, Bin} = gen_tcp:recv(Socket, Bytes),
+	parse_bit_set(binary_to_list(Bin), []).
+
+parse_bit_set([], Output) -> lists:flatten(Output);
+parse_bit_set([B|Bytes], Output) ->
+	<<B0:1, B1:1, B2:1, B3:1, B4:1, B5:1, B6:1, B7:1>> = <<B>>,
+	parse_bit_set(Bytes, [[B7, B6, B5, B4, B3, B2, B1, B0]|Output]).
+
 read_string(Socket) ->
 	case read_short(Socket) of
 		0 -> [];
@@ -193,11 +204,38 @@ read_slots(Socket, Output, RemainingSlots) ->
 
 %% chunks are unparsed
 read_chunk_data(Socket) ->
+	FullColumn = read_bool(Socket),
+	ContainedChunks = read_bit_set(Socket, 2),
+	ChunksCount = lists:sum(ContainedChunks),
+	_ = read_bit_set(Socket, 2),
 	Length = read_int(Socket),
 	_ = read_int(Socket),
 	{ok, Bin} = gen_tcp:recv(Socket, Length),
 	Uncompressed = zlib:uncompress(Bin),
-	{uncompressed, Uncompressed}.
+	{TypeBin, Rest1} = split_binary(Uncompressed, 4096*ChunksCount),
+	{MetadataBin, Rest2} = split_binary(Rest1, 2048*ChunksCount),
+	{BlockLightBin, Rest3} = split_binary(Rest2, 2048*ChunksCount),
+	{SkyLightBin, Rest4} = split_binary(Rest3, 2048*ChunksCount),
+	{BiomeBin, <<>>} = split_binary(Rest4, 256),
+	Types = refer_chunks(ContainedChunks, TypeBin, 4096),
+	Metadata = refer_chunks(ContainedChunks, MetadataBin, 2048),
+	BlockLight = refer_chunks(ContainedChunks, BlockLightBin, 2048),
+	SkyLight = refer_chunks(ContainedChunks, SkyLightBin, 2048),
+	{parsed, #chunk_column_data{full_column=FullColumn, types=Types,
+	                            metadata=Metadata, block_light=BlockLight,
+	                            sky_light=SkyLight, biome=BiomeBin}}.
+
+refer_chunks(ContainedChunks, Bin, ChunkSize) ->
+	refer_chunks(ContainedChunks, Bin, ChunkSize, 0, []).
+
+refer_chunks([], <<>>, _ChunkSize, 16, Output) -> lists:reverse(Output);
+refer_chunks([0|ContainedChunks], Bin, ChunkSize, ZChunk, Output) ->
+	refer_chunks(ContainedChunks, Bin, ChunkSize, ZChunk+1, Output);
+refer_chunks([1|ContainedChunks], Bin, ChunkSize, ZChunk, Output) ->
+	{Chunk, Rest} = split_binary(Bin, ChunkSize),
+	refer_chunks(ContainedChunks, Rest, ChunkSize, ZChunk+1,
+	             [{ZChunk, Chunk}|Output]).
+
 
 read_multi_block_change_data(Socket) ->
 	RecordCount = read_short(Socket),
@@ -374,7 +412,6 @@ encode_chunk_data({raw, Bin}) ->
 encode_chunk_data({uncompressed, Uncompressed}) ->
 	Bin = zlib:compress(Uncompressed),
 	[encode_int(byte_size(Bin)), encode_int(0), Bin].
-
 	
 encode_multi_block_change_datasets(BlockDelta) -> encode_multi_block_change_datasets(BlockDelta, []).
 
