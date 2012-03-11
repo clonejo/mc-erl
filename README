@@ -2,12 +2,12 @@ You'll need an erlang compiler/vm!
 
 How to get it running:
  1. Download (uncompress if necessary)
- 2. $ python metapython.py
+ 2. $ python metamake.py
  3. $ sh make.sh
  4. $ mkdir log
  5. $ cd ebin/
  6. $ erl
-11. 1> mc_erl_app:start([], []).
+ 7. 1> mc_erl_app:start([], []).
 
 The proxy will be available at 127.0.0.1:25566 and it proxies to 127.0.0.1:25565.
 Be aware the log files can get quite big (some 100MB).
