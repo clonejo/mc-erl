@@ -1,5 +1,5 @@
 -module(mc_erl_packets).
--export([get_by_id/1, get_by_name/1]).
+-export([get_by_id/1, get_by_name/1, get_enchantment_by_id/1, get_enchantment_by_name/1]).
 
 get_by_id(Id) ->
 	case Id of
@@ -202,3 +202,61 @@ get_by_name(Name) ->
 		X ->
 			{error, {unknown_name, X}}
 	end).
+
+get_enchantment_by_id(Id) ->
+	case Id of
+		0 -> {0, protection, [helmet, chestplate, leggings, boots], 4};
+		1 -> {1, fire_protection, [helmet, chestplate, leggings, boots], 4};
+		2 -> {2, feather_falling, [boots], 4};
+		3 -> {3, blast_protection, [helmet, chestplate, leggings, boots], 4};
+		4 -> {4, projectile_protection, [helmet, chestplate, leggings, boots], 4};
+		5 -> {5, respiration, [helmet], 3};
+		6 -> {6, aqua_affinity, [helmet], 1};
+		
+		16 -> {16, sharpness, [sword], 5};
+		17 -> {17, smite, [sword], 5};
+		18 -> {18, bane_of_anthropods, [sword], 5};
+		19 -> {19, knockback, [sword], 2};
+		20 -> {20, fire_aspect, [sword], 2};
+		21 -> {21, looting, [sword], 3};
+		
+		48 -> {48, 'power', [bow], 5};
+		49 -> {49, punch, [bow], 2};
+		50 -> {50, flame, [bow], 1};
+		51 -> {51, 'infinity', [bow], 1};
+		
+		32 -> {32, efficiency, [pickaxe, shovel, axe], 5};
+		33 -> {33, silk_touch, [pickaxe, shovel, axe], 1};
+		34 -> {34, unbreaking, [pickaxe, shovel, axe], 3};
+		35 -> {35, fortune, [pickaxe, shovel, axe], 3}
+	end.
+
+get_enchantment_by_name(Name) ->
+	get_enchantment_by_id(case Name of
+		protection -> 0;
+		fire_protection -> 1;
+		feather_falling -> 2;
+		blast_protection -> 3;
+		projectile_protection -> 4;
+		respiration -> 5;
+		aqua_affinity -> 6;
+		
+		sharpness -> 16;
+		smite -> 17;
+		bane_of_anthropods -> 18;
+		knockback -> 19;
+		fire_aspect -> 20;
+		looting -> 21;
+		
+		'power' -> 48;
+		punch -> 49;
+		flame -> 50;
+		'infinity' -> 51;
+		
+		efficiency -> 32;
+		silk_touch -> 33;
+		unbreaking -> 34;
+		fortune -> 35
+	end).
+		
+		

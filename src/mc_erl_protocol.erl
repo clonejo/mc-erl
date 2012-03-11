@@ -140,7 +140,6 @@ read_metadata(Socket, Output) ->
 			read_metadata(Socket, [O|Output])
 	end.
 
-%% enchantment information is not parsed
 read_slot(Socket) ->
 	case read_short(Socket) of
 		-1 -> empty;
@@ -153,16 +152,33 @@ read_slot(Socket) ->
 						-1 ->
 							{ItemId, ItemCount, Metadata, []};
 						BinLength ->
-							io:format("length: ~p~n", [BinLength]),
-							{ok, Bin} = gen_tcp:recv(Socket, BinLength),
-							EnchNBT = zlib:gunzip(Bin),
-							EnchData = nbt:decode(EnchNBT),
-							{ItemId, ItemCount, Metadata, {nbt, EnchData}}
+							{ok, BinEnchantments} = gen_tcp:recv(Socket, BinLength),
+							{ItemId, ItemCount, Metadata, read_enchantments(BinEnchantments)}
 					end;
 				false -> 
 					{ItemId, ItemCount, Metadata}
 			end
 	end.
+
+
+read_enchantments(BinEnchantments) ->
+	EnchNbtBin = zlib:gunzip(BinEnchantments),
+	EnchData = nbt:decode(EnchNbtBin),
+	
+	% I am really sorry for the following, but that NBT library has this crazy format.
+	% Note, however, that variable Enchantments becomes bound after this line, populated
+	% by a list of [{<<"id">>, {short, Eid}}, {<<"lvl">>, {short, Lvl}}]. 
+	{<<"tag">>,{compound,[{<<"ench">>,{compound, Enchantments}}]}} = EnchData,
+	
+	% This cryptic fun makes enchantments readable. get_enchantment_by_id return
+	% a tuple, structured as {ench_name, [applicable_item_classes], max_lvl}.
+	% Validation is performed in server implementation.
+	lists:map(fun(X) ->
+			[{<<"id">>, {short, Eid}}, {<<"lvl">>, {short, Lvl}}] = X,
+			{_EnchId, EnchName, _AppliedTo, _MaxLvl} = mc_erl_packets:get_enchantment_by_id(Eid),
+			{EnchName, Lvl} end, 
+		Enchantments).
+	
 
 read_slots(Socket) ->
 	Count = read_short(Socket),
@@ -324,15 +340,25 @@ encode_slot(P) ->
 		{ItemId, Count, Metadata, []} ->
 			[encode_short(ItemId), encode_byte(Count),
 			 encode_short(Metadata), encode_short(-1)];
-		{ItemId, Count, Metadata, {raw, Bin}} ->
+		{ItemId, Count, Metadata, EnchList} ->
+			NbtEncoded = encode_enchantments(EnchList),
 			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata), encode_short(byte_size(Bin)), Bin];
-		{ItemId, Count, Metadata, {nbt, Nbt}} ->
-			NbtCompressed = zlib:gzip(nbt:encode(Nbt)),
-			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata), encode_short(byte_size(NbtCompressed)), NbtCompressed]
+			 encode_short(Metadata), encode_short(byte_size(NbtEncoded)), NbtEncoded]
 	end.
 
+
+encode_enchantments(EnchList) ->
+	EnchNbtList = lists:map(fun(X) ->
+			{EnchName, Lvl} = X,
+			{Eid, _EName, _AppliedTo, _MaxLvl} = mc_erl_packets:get_enchantment_by_name(EnchName),
+			[{<<"id">>, {short, Eid}}, {<<"lvl">>, {short, Lvl}}] end,
+		EnchList),
+	
+	EnchNbt = {<<"tag">>,{compound,[{<<"ench">>,{compound, EnchNbtList}}]}},
+	zlib:gzip(nbt:encode(EnchNbt)).
+	
+		
+	
 encode_slots(P) ->
 	Length = length(P),
 	encode_slots(P, [encode_short(Length)]).
