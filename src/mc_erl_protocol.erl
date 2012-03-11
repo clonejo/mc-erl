@@ -155,7 +155,9 @@ read_slot(Socket) ->
 						BinLength ->
 							io:format("length: ~p~n", [BinLength]),
 							{ok, Bin} = gen_tcp:recv(Socket, BinLength),
-							{ItemId, ItemCount, Metadata, {raw, Bin}}
+							EnchNBT = zlib:gunzip(Bin),
+							EnchData = nbt:decode(EnchNBT),
+							{ItemId, ItemCount, Metadata, {nbt, EnchData}}
 					end;
 				false -> 
 					{ItemId, ItemCount, Metadata}
@@ -323,7 +325,11 @@ encode_slot(P) ->
 			 encode_short(Metadata), encode_short(-1)];
 		{ItemId, Count, Metadata, {raw, Bin}} ->
 			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata), encode_short(byte_size(Bin)), Bin]
+			 encode_short(Metadata), encode_short(byte_size(Bin)), Bin];
+		{ItemId, Count, Metadata, {nbt, Nbt}} ->
+			NbtCompressed = zlib:gzip(nbt:encode(Nbt)),
+			[encode_short(ItemId), encode_byte(Count),
+			 encode_short(Metadata), encode_short(byte_size(NbtCompressed)), NbtCompressed]
 	end.
 
 encode_slots(P) ->
