@@ -1,0 +1,16 @@
+You'll need an erlang compiler/vm!
+
+How to get it running:
+ 1. Download (uncompress if necessary)
+ 2. $ python metapython.py
+ 3. $ sh make.sh
+ 4. create log/
+ 5. $ cd ebin/
+ 6. $ erl
+ 7. 1> c(mc_erl_app).
+ 8. 2> c(mc_erl_packets).
+ 9. 3> c(mc_erl_protocol).
+10. 4> c(mc_erl_proxy).
+11. 5> mc_erl_app:start([], []).
+
+The proxy will be available at 127.0.0.1:25566 and it proxies to 127.0.0.1:25565.
