@@ -59,6 +59,7 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			chunk_data -> read_chunk_data(Socket);
 			multi_block_change_data -> read_multi_block_change_data(Socket);
 			coordinate_offsets -> read_coordinate_offsets(Socket);
+			projectile_data -> read_projectile_data(Socket);
 			_ ->
 				io:format("[~w] unknown datatype: ~p~n", [?MODULE, TypeParam]),
 				{error, unknown_datatype, TypeParam}
@@ -211,7 +212,16 @@ read_multi_block_change_datasets(Socket, RecordCount, DeltaBlocks) ->
 	{ok, Raw} = gen_tcp:recv(Socket, 4),
 	<<DX:4/unsigned, DZ:4/unsigned, DY:8/unsigned, BlockID:12/unsigned, Metadata:4/unsigned>> = Raw,
 	read_multi_block_change_datasets(Socket, RecordCount - 1, [{DX, DZ, DY, BlockID, Metadata}|DeltaBlocks]).
-	
+
+read_projectile_data(Socket) ->
+	case read_int(Socket) of
+		0 -> {projectile, none};
+		Owner ->
+			SpeedX = read_short(Socket),
+			SpeedY = read_short(Socket),
+			SpeedZ = read_short(Socket),
+			{projectile, {Owner, SpeedX, SpeedY, SpeedZ}}
+	end.
 
 %% coordinates are unparsed also
 read_coordinate_offsets(Socket) ->
@@ -256,6 +266,7 @@ encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 		chunk_data -> encode_chunk_data(P);
 		multi_block_change_data -> encode_multi_block_change_data(P);
 		coordinate_offsets -> encode_coordinate_offsets(P);
+		projectile_data -> encode_projectile_data(P);
 		X -> {error, unknown_datatype, X}
 	end,
 	encode_param_list(ParamList, TypeParamList, [O|Output]).
@@ -388,3 +399,11 @@ encode_multi_block_change_data({multi_block_change_data, RecordsNum, BlockDelta}
 
 encode_coordinate_offsets({raw, OffsetsNum, Bin}) ->
 	[encode_int(OffsetsNum), Bin].
+
+encode_projectile_data({projectile, none}) ->
+	encode_int(0);
+encode_projectile_data({projectile, {Owner, SpeedX, SpeedY, SpeedZ}}) ->
+	[encode_int(Owner), encode_short(SpeedX), encode_short(SpeedY), encode_short(SpeedZ)].
+
+
+

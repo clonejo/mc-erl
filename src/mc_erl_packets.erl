@@ -54,7 +54,7 @@ get_by_id(Id) ->
 		22 ->
 			{22, collect_item, [int, int]};
 		23 -> % no fireballs supported!
-			{23, add_object, [int, byte, int, int, int, int]}; 
+			{23, add_object, [int, byte, int, int, int, projectile_data]}; 
 		24 ->
 			{24, mob_spawn, [int, byte, int, int, int, byte, byte, byte, metadata]};
 		26 ->
