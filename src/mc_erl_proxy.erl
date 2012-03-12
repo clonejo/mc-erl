@@ -3,6 +3,8 @@
 
 -export([start_link/0, stop/0]).
 
+-include("records.hrl").
+
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -68,8 +70,8 @@ log_handler(File) ->
 		{log, String, Args} ->
 			io:format(File, String, Args),
 			log_handler(File)
-		after 5000 ->
-			file:close(File)
+		%after 5000 ->
+		%	file:close(File)
 	end.
 
 server_to_client(ClientSocket, ServerSocket, LogHandler) ->
