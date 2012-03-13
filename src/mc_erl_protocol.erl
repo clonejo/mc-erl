@@ -29,7 +29,7 @@
 % ======================================================================
 
 decode_packet(Socket) ->
-	Recv = gen_tcp:recv(Socket, 1, 10000),
+	Recv = gen_tcp:recv(Socket, 1),
 	case Recv of
 		{ok, <<Id>>} ->
 			{Id, Name, TypeParamList} = mc_erl_packets:get_by_id(Id),
@@ -199,11 +199,9 @@ read_slots(Socket) ->
 read_slots(_Socket, Output, 0) ->
 	lists:reverse(Output);
 
-%% enchantment information is not parsed
 read_slots(Socket, Output, RemainingSlots) ->
 	read_slots(Socket, [read_slot(Socket)|Output], RemainingSlots-1).
 
-%% chunks are unparsed
 read_chunk_data(Socket) ->
 	FullColumn = read_bool(Socket),
 	ContainedChunks = read_bit_set(Socket, 2),
