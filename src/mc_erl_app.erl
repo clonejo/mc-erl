@@ -8,5 +8,6 @@ start(_StartType, StartArgs) ->
 	case StartArgs of
 		[] -> mc_erl_proxy:start_link();
 		[proxy] -> mc_erl_proxy:start_link();
-		[server] -> mc_erl_server:start_link();
+		[server] -> mc_erl_server:start_link()
+	end.
 stop(_State) -> mc_erl_proxy:stop().

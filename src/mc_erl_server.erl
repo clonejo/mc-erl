@@ -1,7 +1,7 @@
--module(mc_erl_proxy).
+-module(mc_erl_server).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0]).
+-export([start_link/0, stop/0, send/2]).
 
 -include("records.hrl").
 
@@ -40,11 +40,10 @@ handle_call(Message, _From, State) ->
 			{noreply, State}
 	end.
 
-
-handle_cast({new_connection, ClientSocket}, State) ->
+handle_cast({new_connection, Socket}, State) ->
 	io:format("[~s] Player connecting...~n", [?MODULE]),
 	spawn(fun() ->
-		client_to_server(ClientSocket, ServerSocket, LogHandler) end),
+		recv(Socket) end),
 	{noreply, State};
 
 handle_cast(stop, State) ->
@@ -67,5 +66,28 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
+
+
+recv(Socket) ->
+	{ok, Packet} = mc_erl_protocol:decode_packet(Socket),
+	case Packet of
+		{server_list_ping, [] } ->
+			send(Socket, {disconnect,["A Minecraft Server§0§20"]});
+			%gen_tcp:close(Socket);
+		{handshake, [S]} ->
+			{Name,_} = lists:split(string:str(S,";")-1,S),
+			io:format("[~s] Player joining: ~s~n", [?MODULE, Name]),
+			send(Socket, {handshake, ["-"]}),
+			{ok, {login_request, [28, Name, "", 0, 0, 0, 0, 0}}
+				= mc_erl_protocol:decode_packet(Socket),
+			% register client at entity manager to get entity id
+			send(Socket, {login_request, [
+	end.
+
+send(Socket, Packet) ->
+	gen_tcp:send(Socket, mc_erl_protocol:encode_packet(Packet)).
+
+
+
 
 
