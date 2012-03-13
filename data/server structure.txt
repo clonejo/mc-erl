@@ -1,0 +1,23 @@
+
+===============================================
+== widely accessed data
+===============================================
+ - chunks
+ - process ids: send packets to client
+ - player list
+
+
+===============================================
+== processes
+===============================================
+ - one process enough for several points?
+
+per client:
+ - receive packets
+ - send packets (needed? is gen_tcp:send/2 an atom operation?) 
+
+per map area:
+ - entity simulation -> players, animals, mobs, pickups
+    - split up because of different sight ranges?
+ - send chunks to clients when necessary
+ 
