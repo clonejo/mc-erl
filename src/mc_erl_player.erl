@@ -43,6 +43,12 @@ recv(Socket, LoadedChunks) ->
 					recv(Socket, LoadedChunks);
 				{player_position_look, [X, Y, Stance, Z, Yaw, Pitch, OnGround]} ->
 					recv(Socket, check_chunks(Socket, {X, Y, Z}, LoadedChunks));
+				{player_digging, [0, X, Y, Z, _]} ->
+					mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
+					recv(Socket, LoadedChunks);
+				{player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]} ->
+					mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
+					recv(Socket, LoadedChunks);
 				{disconnect, [Message]} ->
 					% remove players' entity id etc.
 					io:format("[~s] A player disconnected: \"~s\"~n", [?MODULE, Message]),
