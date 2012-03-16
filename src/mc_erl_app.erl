@@ -4,15 +4,9 @@
 
 %% StartArgs = proxy | server
 %% StartArgs = [] is deprecated!
-start(_StartType, StartArgs) ->
-	case StartArgs of
-		[] -> mc_erl_proxy:start_link();
-		[proxy] -> mc_erl_proxy:start_link();
-		[server] -> [
-			mc_erl_server:start_link(),
-			mc_erl_chunk_manager:start_link()]
-	end.
+start(_StartType, [server]) -> mc_erl_server_sup:start_link();
+start(_StartType, [proxy]) -> mc_erl_proxy:start_link().
+
 stop(_State) -> [
 	mc_erl_proxy:stop(),
-	mc_erl_server:stop(),
-	mc_erl_chunk_manager:stop()].
+	mc_erl_server_sup:shutdown()].
