@@ -15,8 +15,8 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 %% converts coordinates to chunk coordinates
-coord_to_chunk({pos, X, _Y, Z}) ->
-	{chunk, floor(X/16), floor(Z/16)}.
+coord_to_chunk({X, _Y, Z}) ->
+	{floor(X/16), floor(Z/16)}.
 
 floor(X) when X < 0 ->
     T = trunc(X),
@@ -28,16 +28,16 @@ floor(X) ->
     trunc(X).
 
 %% returns a set of {chunk, X, Z} coordinates
-chunks_in_range({pos, _, _, _}=Pos, Range) ->
+chunks_in_range({_, _, _}=Pos, Range) ->
 	chunks_in_range(coord_to_chunk(Pos), Range);
-chunks_in_range({chunk, CX, CZ}, Range) ->
+chunks_in_range({CX, CZ}, Range) ->
 	sets:from_list(lists:flatten(
-		[[{chunk, X, Z} || X<-lists:seq(CX-Range, CX+Range)]||
+		[[{X, Z} || X<-lists:seq(CX-Range, CX+Range)]||
 			Z<-lists:seq(CZ-Range, CZ+Range)])).
 
-get_chunk({pos, _, _, _}=Pos) ->
+get_chunk({_, _, _}=Pos) ->
 	get_chunk(coord_to_chunk(Pos));
-get_chunk({chunk, _, _}=Coord) ->
+get_chunk({_, _}=Coord) ->
 	gen_server:call(?MODULE, {get_chunk, Coord}).
 
 % gen_server callbacks
@@ -46,7 +46,8 @@ init([]) ->
 	{ok, []}.
 
 handle_call({get_chunk, ChunkCoord}, From, State) ->
-	mc_erl_chunk_generator:gen_column(ChunkCoord);
+	%io:format("[~s] getting chunk...~n", [?MODULE]),
+	{reply, mc_erl_chunk_generator:gen_column(ChunkCoord), State};
 handle_call(Message, _From, State) ->
 	case Message of
 		_ ->

@@ -4,7 +4,8 @@
 
 -include("records.hrl").
 
-gen_column({chunk, X, Y}) ->
+gen_column({X, Y}) ->
+	io:format("[~w] generated chunk ~p~n", [?MODULE, {chunk, X, Y}]),
 	#chunk_column_data{full_column=true,
 	                   types=[{0, list_to_binary([binary:copy(<<7>>,256),
 	                                             binary:copy(<<0>>,256*15)])}],
