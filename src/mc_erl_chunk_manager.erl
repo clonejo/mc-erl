@@ -36,7 +36,7 @@ chunks_in_range({CX, CZ}, Range) ->
 			Z<-lists:seq(CZ-Range, CZ+Range)])).
 
 asynchronous_get_chunk(ChunkCoord, Chunks) ->
-	Chunk = case ets:lookup(Chunks, ChunkCoord) of
+	case ets:lookup(Chunks, ChunkCoord) of
 		[] ->
 			C = mc_erl_chunk_generator:gen_column(ChunkCoord),
 			ets:insert(Chunks, {ChunkCoord, C}),
