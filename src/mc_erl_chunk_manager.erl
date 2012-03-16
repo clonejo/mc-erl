@@ -35,6 +35,15 @@ chunks_in_range({CX, CZ}, Range) ->
 		[[{X, Z} || X<-lists:seq(CX-Range, CX+Range)]||
 			Z<-lists:seq(CZ-Range, CZ+Range)])).
 
+asynchronous_get_chunk(ChunkCoord, Chunks) ->
+	Chunk = case ets:lookup(Chunks, ChunkCoord) of
+		[] ->
+			C = mc_erl_chunk_generator:gen_column(ChunkCoord),
+			ets:insert(Chunks, {ChunkCoord, C}),
+			C;
+		[{ChunkCoord, C}] -> C
+	end.
+			
 get_chunk({_, _, _}=Pos) ->
 	get_chunk(coord_to_chunk(Pos));
 get_chunk({_, _}=Coord) ->
@@ -45,18 +54,15 @@ get_chunk({_, _}=Coord) ->
 % gen_server callbacks
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
-	Chunks = ets:new(chunks, [set, private]),
+	Chunks = ets:new(chunks, [set, public]),
 	{ok, Chunks}.
 
 handle_call({get_chunk, ChunkCoord}, From, Chunks) ->
-	Chunk = case ets:lookup(Chunks, ChunkCoord) of
-		[] ->
-			C = mc_erl_chunk_generator:gen_column(ChunkCoord),
-			ets:insert(Chunks, {ChunkCoord, C}),
-			C;
-		[{ChunkCoord, C}] -> C
-	end,
-	{reply, Chunk, Chunks};
+	proc_lib:spawn_link(fun() ->
+		Chunk = asynchronous_get_chunk(ChunkCoord, Chunks),
+		gen_server:reply(From, Chunk)
+		end),
+	{noreply, Chunks};
 
 handle_call(Message, _From, State) ->
 	case Message of
