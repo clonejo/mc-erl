@@ -1,4 +1,4 @@
--module(mc_erl_chunks).
+-module(mc_erl_chunk_manager).
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1]).
