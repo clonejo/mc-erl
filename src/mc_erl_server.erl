@@ -138,7 +138,6 @@ load_chunks(Socket, [{X, Y}|Rest]) ->
 	load_chunks(Socket, Rest);
 load_chunks(Socket, ChunksSet) ->
 	Chunks = sets:to_list(ChunksSet),
-	io:format("Chunks: ~p~n", [Chunks]),
 	load_chunks(Socket, Chunks).
 
 

@@ -40,14 +40,24 @@ get_chunk({_, _, _}=Pos) ->
 get_chunk({_, _}=Coord) ->
 	gen_server:call(?MODULE, {get_chunk, Coord}).
 
+%get_compressed_chunk(...
+
 % gen_server callbacks
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
-	{ok, []}.
+	Chunks = ets:new(chunks, [set, private]),
+	{ok, Chunks}.
 
-handle_call({get_chunk, ChunkCoord}, From, State) ->
-	%io:format("[~s] getting chunk...~n", [?MODULE]),
-	{reply, mc_erl_chunk_generator:gen_column(ChunkCoord), State};
+handle_call({get_chunk, ChunkCoord}, From, Chunks) ->
+	Chunk = case ets:lookup(Chunks, ChunkCoord) of
+		[] ->
+			C = mc_erl_chunk_generator:gen_column(ChunkCoord),
+			ets:insert(Chunks, {ChunkCoord, C}),
+			C;
+		[{ChunkCoord, C}] -> C
+	end,
+	{reply, Chunk, Chunks};
+
 handle_call(Message, _From, State) ->
 	case Message of
 		_ ->
