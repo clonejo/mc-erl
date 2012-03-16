@@ -83,11 +83,10 @@ recv(Socket) ->
 			% register client at entity manager to get entity id
 			send(Socket, {login_request, [100, "", "DEFAULT", 1, 0, 0, 0, 100]}),
 			send(Socket, {spawn_position, [0, 0, 0]}),
-			Chunks = mc_erl_chunk_manager:chunks_in_range({0, 0, 0}, 3),
-			load_chunks(Socket, Chunks),
+			LoadedChunks = check_chunks(Socket, {0, 0}),
 			send(Socket, {player_position_look, [0,6,5,0,0,0,1]}),
 			spawn_link(fun() -> keep_alive_sender(Socket) end),
-			recv(Socket, Chunks)
+			recv(Socket, LoadedChunks)
 	end.
 
 recv(Socket, LoadedChunks) ->
@@ -102,14 +101,11 @@ recv(Socket, LoadedChunks) ->
 				{player, OnGround} ->
 					recv(Socket, LoadedChunks);
 				{player_position, [X, Y, Stance, Z, OnGround]} ->
-					% update loaded chunks here!
-					recv(Socket, LoadedChunks);
+					recv(Socket, check_chunks(Socket, {X, Y, Z}, LoadedChunks));
 				{player_look, [Yaw, Pitch, OnGround]} ->
-					% update loaded chunks here!
 					recv(Socket, LoadedChunks);
 				{player_position_look, [X, Y, Stance, Z, Yaw, Pitch, OnGround]} ->
-					% update loaded chunks here!
-					recv(Socket, LoadedChunks);
+					recv(Socket, check_chunks(Socket, {X, Y, Z}, LoadedChunks));
 				{disconnect, [Message]} ->
 					% remove players' entity id etc.
 					io:format("[~s] A player disconnected: \"~s\"~n", [?MODULE, Message]),
@@ -130,15 +126,30 @@ keep_alive_sender(Socket) ->
 send(Socket, Packet) ->
 	gen_tcp:send(Socket, mc_erl_protocol:encode_packet(Packet)).
 
+check_chunks(Socket, PlayerChunk) ->
+	check_chunks(Socket, PlayerChunk, sets:new()).
+
+check_chunks(Socket, PlayerChunk, LoadedChunks) ->
+	NeededChunks = mc_erl_chunk_manager:chunks_in_range(PlayerChunk, 3),
+	unload_chunks(Socket, sets:to_list(sets:subtract(LoadedChunks, NeededChunks))),
+	load_chunks(Socket, sets:to_list(sets:subtract(NeededChunks, LoadedChunks))),
+	NeededChunks.
+
 load_chunks(_Socket, []) -> ok;
-load_chunks(Socket, [{X, Y}|Rest]) ->
-	send(Socket, {pre_chunk, [X, Y, 1]}),
-	ChunkData = mc_erl_chunk_manager:get_chunk({X, Y}),
-	send(Socket, {map_chunk, [X, Y, {parsed, ChunkData}]}),
+load_chunks(Socket, [{X, Z}|Rest]) ->
+	send(Socket, {pre_chunk, [X, Z, 1]}),
+	ChunkData = mc_erl_chunk_manager:get_chunk({X, Z}),
+	send(Socket, {map_chunk, [X, Z, {parsed, ChunkData}]}),
 	load_chunks(Socket, Rest);
 load_chunks(Socket, ChunksSet) ->
 	Chunks = sets:to_list(ChunksSet),
 	load_chunks(Socket, Chunks).
+
+unload_chunks(_Socket, []) -> ok;
+unload_chunks(Socket, [{X, Z}|Rest]) ->
+	send(Socket, {pre_chunk, [X, Z, 0]}),
+	unload_chunks(Socket, Rest).
+
 
 
 
