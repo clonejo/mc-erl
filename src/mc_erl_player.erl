@@ -9,7 +9,7 @@ recv(Socket) ->
 	{ok, Packet} = mc_erl_protocol:decode_packet(Socket),
 	case Packet of
 		{server_list_ping, [] } ->
-			send(Socket, {disconnect,["A Minecraft Server§0§20"]});
+			send(Socket, {disconnect,[lists:flatten(["a ...err... lang server!",167, "0", 167, "100"])]});
 			%gen_tcp:close(Socket);
 		{handshake, [S]} ->
 			{Name,_} = lists:split(string:str(S,";")-1,S),
