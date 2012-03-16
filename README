@@ -7,7 +7,14 @@ How to get it running:
  4. $ mkdir log
  5. $ cd ebin/
  6. $ erl
- 7. 1> mc_erl_app:start([], []).
+
+And now there are two different types of operation. It is either a fully functional minecraft proxy server or an alpha minecraft 1.2 SMP server. To run it as a proxy server, type 
+  application:start(mc_erl_proxy).
+into Erlang prompt. To start a server, type
+  application:start(mc_erl_server).
+Full stops are required.
 
 The proxy will be available at 127.0.0.1:25566 and it proxies to 127.0.0.1:25565.
 Be aware the log files can get quite big (some 100MB).
+
+The server also runs at port 25566 and cannot be run simultaneously with proxy server.
