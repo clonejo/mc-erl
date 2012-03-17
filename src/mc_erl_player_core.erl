@@ -10,7 +10,7 @@ read(Socket) ->
 	case Packet of
 		{server_list_ping, [] } ->
 			io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
-			send(Socket, {disconnect,["A Minecraft Server§0§20"]});
+			send(Socket, {disconnect,[lists:flatten(["A Minecraft Server",167,"0",167,"20"])]});
 			%gen_tcp:close(Socket);
 		{handshake, [S]} ->
 			{Name,_} = lists:split(string:str(S,";")-1,S),
