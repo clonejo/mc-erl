@@ -1,4 +1,4 @@
--module(mc_erl_entities).
+-module(mc_erl_entity_manager).
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, register_player/1]).
@@ -8,6 +8,8 @@
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-record(state, {players}).
+
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -15,12 +17,12 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 register_player(Player) ->
-	call({register_player, Player}).
+	gen_server:call(?MODULE, {register_player, Player}).
 
 % gen_server callbacks
 init([]) ->
-	Entities = ets:new(entities, [set, private]),
-	{ok, {Entities, Players}}.
+	%Entities = ets:new(entities, [set, private]),
+	{ok, #state{players=ets:new(foo, [set, private])}}.
 
 handle_call(Message, _From, State) ->
 	case Message of
