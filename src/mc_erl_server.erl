@@ -21,8 +21,9 @@ init([]) ->
 	Port = 25566,
 	{ok, Listen} = gen_tcp:listen(Port, [binary, {reuseaddr, true}, {active, false},
 	                           {packet, raw}, {nodelay, true}]),
-		spawn_link(fun() -> acceptor(Listen) end),
-		{ok, Listen}.
+	spawn_link(fun() -> acceptor(Listen) end),
+	spawn_link(fun() -> ticker() end),
+	{ok, Listen}.
 
 acceptor(Listen) ->
 	case gen_tcp:accept(Listen) of
@@ -32,6 +33,11 @@ acceptor(Listen) ->
 		{error, closed} ->
 			ok
 	end.
+
+ticker() ->
+	gen_server:cast(?MODULE, tick),
+	timer:sleep(50),
+	ticker().
 
 handle_call(Message, _From, State) ->
 	case Message of
@@ -44,6 +50,9 @@ handle_cast({new_connection, Socket}, State) ->
 	io:format("[~s] Player connecting...~n", [?MODULE]),
 	Pid = proc_lib:start(mc_erl_player_core, init_player, [Socket]),
 	gen_tcp:controlling_process(Socket, Pid),
+	{noreply, State};
+
+handle_cast(tick, State) ->
 	{noreply, State};
 
 handle_cast(stop, State) ->
