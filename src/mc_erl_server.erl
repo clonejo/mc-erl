@@ -42,7 +42,7 @@ handle_call(Message, _From, State) ->
 
 handle_cast({new_connection, Socket}, State) ->
 	io:format("[~s] Player connecting...~n", [?MODULE]),
-	Pid = proc_lib:start(mc_erl_player, init_player, [Socket]),
+	Pid = proc_lib:start(mc_erl_player_core, init_player, [Socket]),
 	gen_tcp:controlling_process(Socket, Pid),
 	{noreply, State};
 
