@@ -40,6 +40,14 @@ loop(State) ->
 		{packet, {disconnect, [Message]}} ->
 			io:format("[~s] A player disconnected: \"~s\"~n", [?MODULE, Message]),
 			exit(disconnect);
+		
+		{packet, {player_digging, [0, X, Y, Z, _]}} ->
+				mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
+				loop(State);
+					
+		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} ->
+				mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
+				loop(State);
 			
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
