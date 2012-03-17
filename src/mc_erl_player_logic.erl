@@ -49,7 +49,8 @@ loop(State) ->
 			% handle held item state update (eating food etc.)
 			loop(State);
 			
-		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} ->
+		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} when BlockId < 256 ->
+				io:format("BlockId=~p~n", [BlockId]),
 				mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
 				loop(State);
 			
