@@ -1,7 +1,7 @@
 -module(mc_erl_entities).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, register_entity/1]).
+-export([start_link/0, stop/0, register_player/1]).
 
 -include("records.hrl").
 
@@ -15,7 +15,7 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 register_player(Player) ->
-	call({register_player, Player})
+	call({register_player, Player}).
 
 % gen_server callbacks
 init([]) ->
