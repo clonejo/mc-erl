@@ -90,8 +90,8 @@ handle_call(Message, _From, State) ->
 			{noreply, State}
 	end.
 
-%% metadata is currently ignored
-handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
+
+handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}=NewBlock}, Chunks) ->
 	Column = asynchronous_get_chunk(coord_to_chunk(Coord), Chunks),
 	Types = Column#chunk_column_data.types,
 	Chunk = case proplists:get_value(Y div 16, Types) of
@@ -99,11 +99,29 @@ handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 		C -> C
 	end,
 	{RX, RY, RZ} = coord_within_chunk(Coord),
-	{Head, Rest} = split_binary(Chunk, RX+RZ*16+RY*256),
+	ByteOffset = RX+RZ*16+RY*256,
+	{Head, Rest} = split_binary(Chunk, ByteOffset),
 	{_, Tail} = split_binary(Rest, 1),
 	NewChunk = list_to_binary([Head, BlockId, Tail]),
 	NewTypes = lists:keyreplace(Y div 16, 1, Types, {Y div 16, NewChunk}),
-	NewColumn = Column#chunk_column_data{types=NewTypes},
+	
+	% changing metadata value
+	MetadataColumn = Column#chunk_column_data.metadata,
+	MDC = case proplists:get_value(Y div 16, MetadataColumn) of
+		undefined -> binary:copy(<<0>>, 256);
+		Q -> Q
+	end,
+	NibbleOffset = floor(ByteOffset/2),
+	{MetaHead, MetaRest} = split_binary(MDC, NibbleOffset),
+	{<<M1:4, M2:4>>, MetaTail} = split_binary(MetaRest, 1), % i hate nibble packing
+	NewMetadataValue = case ByteOffset rem 2 of
+		0 -> <<M1:4, Metadata:4>>;
+		1 -> <<Metadata:4, M2:4>>
+	end,
+	NewMetadataChunk = list_to_binary([MetaHead, NewMetadataValue, MetaTail]),
+	NewMetadata = lists:keyreplace(Y div 16, 1, MetadataColumn, {Y div 16, NewMetadataChunk}),
+	
+	NewColumn = Column#chunk_column_data{types=NewTypes, metadata=NewMetadata},
 	ets:insert(Chunks, {coord_to_chunk(Coord), NewColumn}),
 	{noreply, Chunks};
 
