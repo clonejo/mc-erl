@@ -121,6 +121,8 @@ get_by_id(Id) ->
 			{107, creative_inventory_action, [short, slot]};
 		108 ->
 			{108, enchant_item, [byte, byte]};
+		130 ->
+			{130, update_sign, [int, short, int, string, string, string, string]};
 		132 ->
 			{132, update_tile_entity, [int, short, int, byte, int, int, int]};
 		200 ->
@@ -194,6 +196,7 @@ get_by_name(Name) ->
 		transaction -> 106;
 		creative_inventory_action -> 107;
 		enchant_item -> 108;
+		update_sign -> 130;
 		update_tile_entity -> 132;
 		increment_statistic -> 200;
 		player_list_item -> 201;
