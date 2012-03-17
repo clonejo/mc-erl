@@ -42,9 +42,13 @@ loop(State) ->
 			exit(disconnect);
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
-				mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
-				loop(State);
-					
+			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
+			loop(State);
+		
+		{packet, {player_block_placement, [-1, -1, -1, -1, {BlockId, 1, Metadata}]}} ->
+			% handle held item state update (eating food etc.)
+			loop(State);
+			
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} ->
 				mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
 				loop(State);
