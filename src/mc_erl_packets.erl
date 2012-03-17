@@ -196,6 +196,7 @@ get_by_name(Name) ->
 		transaction -> 106;
 		creative_inventory_action -> 107;
 		enchant_item -> 108;
+		update_sign -> 130;
 		update_tile_entity -> 132;
 		increment_statistic -> 200;
 		player_list_item -> 201;
