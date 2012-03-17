@@ -17,7 +17,7 @@ loop(State) ->
 			write(Writer, {login_request, [100, "", "DEFAULT", 1, 0, 0, 0, 100]}),
 			write(Writer, {spawn_position, [0, 0, 0]}),
 			Chunks = check_chunks(Writer, {0, 0}),
-			write(Writer, {player_position_look, [0,6,5,0,0,0,1]}),
+			write(Writer, {player_position_look, [0,71,70,0,0,0,1]}),
 			loop(State#logic_state{chunks=Chunks});
 			
 		{packet, {keep_alive, [_]}} ->
