@@ -67,9 +67,21 @@ loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 
 %get_compressed_chunk(...
 
-set_block({_, _, _, _}=C, {_, _}=BlockData) ->
+set_block({_, _, _, Direction}=C, {BlockId, _Metadata}) ->
 	BlockCoord = block_coord(C),
-	set_block(BlockCoord, BlockData);
+	NewMetadata = if
+		BlockId =:= 50 orelse BlockId =:= 75 orelse BlockId =:= 76 ->
+			case Direction of
+				1 -> 5;
+				2 -> 4;
+				3 -> 3;
+				4 -> 2;
+				5 -> 1;
+				_ -> 0
+			end;
+		true -> 0
+	end,
+	set_block(BlockCoord, {BlockId, NewMetadata});
 set_block({_, _, _}=BlockCoord, {_, _}=BlockData) ->
 	gen_server:cast(?MODULE, {set_block, BlockCoord, BlockData}).
 
