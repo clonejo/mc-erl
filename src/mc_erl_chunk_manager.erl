@@ -91,37 +91,39 @@ handle_call(Message, _From, State) ->
 	end.
 
 
-handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}=NewBlock}, Chunks) ->
+handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 	Column = asynchronous_get_chunk(coord_to_chunk(Coord), Chunks),
-	Types = Column#chunk_column_data.types,
-	Chunk = case proplists:get_value(Y div 16, Types) of
-		undefined -> binary:copy(<<0>>, 256);
+	Chunk = case proplists:get_value(Y div 16, Column#chunk_column_data.chunks) of
+		undefined -> #chunk_data{types=binary:copy(<<0>>,16*16*16),
+	                             metadata=binary:copy(<<0>>,16*16*8),
+	                             block_light=binary:copy(<<0>>,16*16*8),
+	                             sky_light=binary:copy(<<0>>,16*16*8)};
 		C -> C
 	end,
+	io:format("Chunk: ~p~n", [Chunk]),
+	
+	% changing types
 	{RX, RY, RZ} = coord_within_chunk(Coord),
 	ByteOffset = RX+RZ*16+RY*256,
-	{Head, Rest} = split_binary(Chunk, ByteOffset),
+	{Head, Rest} = split_binary(Chunk#chunk_data.types, ByteOffset),
 	{_, Tail} = split_binary(Rest, 1),
-	NewChunk = list_to_binary([Head, BlockId, Tail]),
-	NewTypes = lists:keyreplace(Y div 16, 1, Types, {Y div 16, NewChunk}),
+	NewTypes = list_to_binary([Head, BlockId, Tail]),
 	
 	% changing metadata value
-	MetadataColumn = Column#chunk_column_data.metadata,
-	MDC = case proplists:get_value(Y div 16, MetadataColumn) of
-		undefined -> binary:copy(<<0>>, 256);
-		Q -> Q
-	end,
 	NibbleOffset = floor(ByteOffset/2),
-	{MetaHead, MetaRest} = split_binary(MDC, NibbleOffset),
+	{MetaHead, MetaRest} = split_binary(Chunk#chunk_data.metadata, NibbleOffset),
 	{<<M1:4, M2:4>>, MetaTail} = split_binary(MetaRest, 1), % i hate nibble packing
 	NewMetadataValue = case ByteOffset rem 2 of
 		0 -> <<M1:4, Metadata:4>>;
 		1 -> <<Metadata:4, M2:4>>
 	end,
-	NewMetadataChunk = list_to_binary([MetaHead, NewMetadataValue, MetaTail]),
-	NewMetadata = lists:keyreplace(Y div 16, 1, MetadataColumn, {Y div 16, NewMetadataChunk}),
+	NewMetadata = list_to_binary([MetaHead, NewMetadataValue, MetaTail]),
 	
-	NewColumn = Column#chunk_column_data{types=NewTypes, metadata=NewMetadata},
+	NewChunk = Chunk#chunk_data{types=NewTypes, metadata=NewMetadata},
+	NewColumn = Column#chunk_column_data{
+		chunks=lists:keystore(Y div 16, 1, Column#chunk_column_data.chunks,
+		                     {Y div 16, NewChunk})},
+	
 	ets:insert(Chunks, {coord_to_chunk(Coord), NewColumn}),
 	{noreply, Chunks};
 

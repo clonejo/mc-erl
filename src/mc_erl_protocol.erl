@@ -107,7 +107,10 @@ read_bit_set(Socket, Bytes) ->
 	{ok, Bin} = gen_tcp:recv(Socket, Bytes),
 	parse_bit_set(binary_to_list(Bin), []).
 
-parse_bit_set([], Output) -> lists:flatten(Output);
+parse_bit_set([], Output) ->
+	List = lists:flatten(Output),
+	L2 = [round(math:pow(2,N)) || N <- List],
+	lists:filter(fun(N) -> not (N =:= 0) end, L2);
 parse_bit_set([B|Bytes], Output) ->
 	<<B0:1, B1:1, B2:1, B3:1, B4:1, B5:1, B6:1, B7:1>> = <<B>>,
 	parse_bit_set(Bytes, [[B7, B6, B5, B4, B3, B2, B1, B0]|Output]).
@@ -206,8 +209,7 @@ read_chunk_data(Socket) ->
 	FullColumn = read_bool(Socket),
 	ContainedChunks = read_bit_set(Socket, 2),
 	ChunksCount = lists:sum(ContainedChunks),
-	AddChunks = read_bit_set(Socket, 2),
-	AddChunksCount = lists:sum(AddChunks),
+	_AddChunks = read_bit_set(Socket, 2),
 	Length = read_int(Socket),
 	_ = read_int(Socket),
 	{ok, Bin} = gen_tcp:recv(Socket, Length),
@@ -216,35 +218,30 @@ read_chunk_data(Socket) ->
 	{MetadataBin, Rest2} = split_binary(Rest1, 2048*ChunksCount),
 	{BlockLightBin, Rest3} = split_binary(Rest2, 2048*ChunksCount),
 	{SkyLightBin, Rest4} = split_binary(Rest3, 2048*ChunksCount),
-	{AddDataBin, Rest5} = case AddChunksCount of
-		0 -> {<<>>, Rest4};
-		_ -> split_binary(Rest4, 2048*AddChunksCount)
-	end,
 	
 	BiomeBin = case FullColumn of
-		true -> element(1, split_binary(Rest5, 256));
-		false -> <<>>
+		true -> element(1, split_binary(Rest4, 256));
+		false -> undefined
 	end,
 	
-	Types = refer_chunks(ContainedChunks, TypeBin, 4096),
-	Metadata = refer_chunks(ContainedChunks, MetadataBin, 2048),
-	BlockLight = refer_chunks(ContainedChunks, BlockLightBin, 2048),
-	SkyLight = refer_chunks(ContainedChunks, SkyLightBin, 2048),
-	AddData = refer_chunks(AddChunks, AddDataBin, 2048),
-	{parsed, #chunk_column_data{full_column=FullColumn, types=Types,
-	                            metadata=Metadata, block_light=BlockLight,
-	                            sky_light=SkyLight, add_data=AddData, biome=BiomeBin}}.
+	Types = split_chunks(TypeBin, 4096),
+	Metadata = split_chunks(MetadataBin, 2048),
+	BlockLight = split_chunks(BlockLightBin, 2048),
+	SkyLight = split_chunks(SkyLightBin, 2048),
+	Chunks = [{N, #chunk_data{types=T, metadata=M, block_light=BL, sky_light=SL}} ||
+	          N <- ContainedChunks, T <- Types, M <- Metadata, BL <- BlockLight,
+	          SL <- SkyLight],
+	{parsed, #chunk_column_data{full_column=FullColumn, chunks=Chunks,
+	                            biome=BiomeBin}}.
 
-refer_chunks(ContainedChunks, Bin, ChunkSize) ->
-	refer_chunks(ContainedChunks, Bin, ChunkSize, 0, []).
+split_chunks(Bin, ChunkSize) ->
+	split_chunks(Bin, ChunkSize, []).
 
-refer_chunks([], <<>>, _ChunkSize, 16, Output) -> lists:reverse(Output);
-refer_chunks([0|ContainedChunks], Bin, ChunkSize, ZChunk, Output) ->
-	refer_chunks(ContainedChunks, Bin, ChunkSize, ZChunk+1, Output);
-refer_chunks([1|ContainedChunks], Bin, ChunkSize, ZChunk, Output) ->
+split_chunks(<<>>, _ChunkSize, Output) ->
+	lists:reverse(Output);
+split_chunks(Bin, ChunkSize, Output) ->
 	{Chunk, Rest} = split_binary(Bin, ChunkSize),
-	refer_chunks(ContainedChunks, Rest, ChunkSize, ZChunk+1,
-	             [{ZChunk, Chunk}|Output]).
+	split_chunks(Rest, ChunkSize, [Chunk|Output]).
 
 
 read_multi_block_change_data(Socket) ->
@@ -443,25 +440,21 @@ encode_chunk_data({uncompressed, Uncompressed}) ->
 	Bin = zlib:compress(Uncompressed),
 	[encode_int(byte_size(Bin)), encode_int(0), Bin];
 	
-encode_chunk_data({parsed, Chunks=#chunk_column_data{}}) ->
-	FullColumn = Chunks#chunk_column_data.full_column,
-	ContainedChunks = lists:map(fun(X) -> element(1, X) end,  Chunks#chunk_column_data.metadata),
-	AddChunks = lists:map(fun(X) -> element(1, X) end,  Chunks#chunk_column_data.add_data),
-	Types = lists:map(fun cubic_chunk_data/1, Chunks#chunk_column_data.types),
-	Metadata = lists:map(fun cubic_chunk_data/1, Chunks#chunk_column_data.metadata),
-	BlockLight = lists:map(fun cubic_chunk_data/1, Chunks#chunk_column_data.block_light),
-	SkyLight = lists:map(fun cubic_chunk_data/1, Chunks#chunk_column_data.sky_light),
-	AddData = lists:map(fun cubic_chunk_data/1, Chunks#chunk_column_data.add_data),
-	BiomeData = Chunks#chunk_column_data.biome,
-	
-	BinData = list_to_binary([Types, Metadata, BlockLight, SkyLight, AddData, BiomeData]),
+encode_chunk_data({parsed, Column=#chunk_column_data{}}) ->
+	FullColumn = Column#chunk_column_data.full_column,
+	ContainedChunks = lists:map(fun(X) -> element(1, X) end, Column#chunk_column_data.chunks),
+	AddChunks = lists:map(fun(X) -> element(1, X) end, Column#chunk_column_data.add_data),
+	Chunks = Column#chunk_column_data.chunks,
+	Types = lists:map(fun(X) -> element(2, element(2, X)) end, Chunks),
+	Metadata = lists:map(fun(X) -> element(3, element(2, X)) end, Chunks),
+	BlockLight = lists:map(fun(X) -> element(4, element(2, X)) end, Chunks),
+	SkyLight = lists:map(fun(X) -> element(5, element(2, X)) end, Chunks),
+	BiomeData = Column#chunk_column_data.biome,
+	BinData = list_to_binary([Types, Metadata, BlockLight, SkyLight, BiomeData]),
 	CompressedData = zlib:compress(BinData),
 	
 	[encode_bool(FullColumn), encode_bit_set(ContainedChunks, 2), encode_bit_set(AddChunks, 2),
 		encode_int(byte_size(CompressedData)), encode_int(0), CompressedData].
-	
-	
-cubic_chunk_data({_ChunkY, Data}) -> Data.
 
 encode_multi_block_change_datasets(BlockDelta) -> encode_multi_block_change_datasets(BlockDelta, []).
 
