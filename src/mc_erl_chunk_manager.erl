@@ -96,11 +96,10 @@ handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 	Chunk = case proplists:get_value(Y div 16, Column#chunk_column_data.chunks) of
 		undefined -> #chunk_data{types=binary:copy(<<0>>,16*16*16),
 	                             metadata=binary:copy(<<0>>,16*16*8),
-	                             block_light=binary:copy(<<0>>,16*16*8),
-	                             sky_light=binary:copy(<<0>>,16*16*8)};
+	                             block_light=binary:copy(<<255>>,16*16*8),
+	                             sky_light=binary:copy(<<255>>,16*16*8)};
 		C -> C
 	end,
-	io:format("Chunk: ~p~n", [Chunk]),
 	
 	% changing types
 	{RX, RY, RZ} = coord_within_chunk(Coord),
