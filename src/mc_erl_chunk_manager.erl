@@ -1,7 +1,8 @@
 -module(mc_erl_chunk_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2]).
+-export([start_link/0, stop/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2,
+         loaded_chunks/0]).
 
 -include("records.hrl").
 
@@ -62,6 +63,8 @@ get_chunk({_, _, _}=Pos) ->
 get_chunk({_, _}=Coord) ->
 	gen_server:call(?MODULE, {get_chunk, Coord}).
 
+loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
+
 %get_compressed_chunk(...
 
 set_block({_, _, _, _}=C, {_, _}=BlockData) ->
@@ -82,6 +85,9 @@ handle_call({get_chunk, ChunkCoord}, From, Chunks) ->
 		gen_server:reply(From, Chunk)
 		end),
 	{noreply, Chunks};
+
+handle_call(loaded_chunks, _From, Chunks) ->
+	{reply, ets:info(Chunks, size), Chunks};
 
 handle_call(Message, _From, State) ->
 	case Message of
