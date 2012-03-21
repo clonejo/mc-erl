@@ -26,6 +26,7 @@ loop(State) ->
 					Chunks = check_chunks(Writer, State#state.pos),
 					{X, Y, Z} = State#state.pos,
 					write(Writer, {player_position_look, [X,Y+1.62,Y,Z,0,0,1]}),
+					mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
 					loop(State#state{chunks=Chunks, player=NewPlayer})
 			end;
 			
@@ -49,6 +50,7 @@ loop(State) ->
 		{packet, {disconnect, [Message]}} ->
 			io:format("[~s] A player disconnected: \"~s\"~n", [?MODULE, Message]),
 			mc_erl_entity_manager:delete_player(State#state.player),
+			mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
 			exit(disconnect);
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
