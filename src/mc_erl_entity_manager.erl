@@ -1,8 +1,8 @@
 -module(mc_erl_entity_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, register_player/1, delete_player/1,
-         get_all_players/0, get_player/1, block_delta/1]).
+-export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2,
+         get_all_players/0, get_player/1, broadcast/1, broadcast_local/2]).
 
 -include("records.hrl").
 
@@ -24,14 +24,20 @@ register_player(Player) ->
 delete_player(Player) ->
 	gen_server:call(?MODULE, {delete_player, Player}).
 
+move_entity(Eid, [_X, _Y, _Z, _Pitch, _Yaw]=NewLocation) ->
+	gen_server:call(?MODULE, {move_entity, Eid, NewLocation}).
+
 get_all_players() ->
 	gen_server:call(?MODULE, get_all_players).
 
 get_player(Name) ->
 	gen_server:call(?MODULE, {get_player, Name}).
 
-block_delta({_X, _Y, _Z, _BlockId, _Metadata}=NewBlock) ->
-	gen_server:cast(?MODULE, {block_delta, NewBlock}).
+broadcast(Message) ->
+	gen_server:cast(?MODULE, {broadcast, Message}).
+
+broadcast_local(_Eid, Message) -> % a placeholder for a real local-only event
+	gen_server:cast(?MODULE, {broadcast, Message}).
 
 % gen_server callbacks
 init([]) ->
@@ -72,8 +78,8 @@ handle_cast(stop, State) ->
 	io:format("[~s] stopping~n", [?MODULE]),
 	{stop, normal, State};
 
-handle_cast({block_delta, _NewBlock}=BlockDelta, State) ->
-	broadcast(BlockDelta, State),
+handle_cast({broadcast, Message}, State) ->
+	broadcast(Message, State),
 	{noreply, State};
 
 handle_cast(Message, State) ->
