@@ -63,8 +63,13 @@ loop(State) ->
 			mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
 			loop(State);
 		
+		{packet, {chat_message, [Message]}} ->
+			mc_erl_chat:broadcast(State#state.player, Message),
+			loop(State);
+		
 		{chat, Message} ->
-			write(Writer, {chat_message, [Message]});
+			write(Writer, {chat_message, [Message]}),
+			loop(State);
 		
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
