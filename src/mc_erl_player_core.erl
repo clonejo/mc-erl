@@ -32,7 +32,7 @@ read(Socket) ->
 read(Socket, Logic) ->
 	case mc_erl_protocol:decode_packet(Socket) of
 		{error,closed} ->
-			Logic ! {disconnect, ["Lost connection"]},
+			Logic ! {packet, {disconnect, ["Lost connection"]}},
 			io:format("[~s] Lost connection~n", [?MODULE]);
 
 		{ok, Packet} ->
