@@ -68,7 +68,7 @@ loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 %get_compressed_chunk(...
 
 set_block({_, _, _, Direction}=C, {BlockId, _Metadata}) ->
-	BlockCoord = undirectional_block_coord(C),
+	{X, Y, Z} = BlockCoord = undirectional_block_coord(C),
 	NewMetadata = if
 		BlockId =:= 50 orelse BlockId =:= 75 orelse BlockId =:= 76 ->
 			case Direction of
@@ -81,6 +81,7 @@ set_block({_, _, _, Direction}=C, {BlockId, _Metadata}) ->
 			end;
 		true -> 0
 	end,
+	mc_erl_entity_manager:block_delta({X, Y, Z, BlockId, NewMetadata}),
 	set_block(BlockCoord, {BlockId, NewMetadata});
 set_block({_, _, _}=BlockCoord, {_, _}=BlockData) ->
 	gen_server:cast(?MODULE, {set_block, BlockCoord, BlockData}).
