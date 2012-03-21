@@ -32,7 +32,7 @@ read(Socket) ->
 read(Socket, Logic) ->
 	case mc_erl_protocol:decode_packet(Socket) of
 		{error,closed} ->
-			% remove players' entity id etc.
+			Logic ! {disconnect, ["Lost connection"]},
 			io:format("[~s] Lost connection~n", [?MODULE]);
 
 		{ok, Packet} ->
