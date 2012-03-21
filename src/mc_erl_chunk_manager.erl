@@ -81,8 +81,9 @@ set_block({_, _, _, Direction}=C, {BlockId, _Metadata}) ->
 			end;
 		true -> 0
 	end,
-	mc_erl_entity_manager:block_delta({X, Y, Z, BlockId, NewMetadata}),
+	mc_erl_entity_manager:broadcast_visible({X, Y, Z}, {block_delta, {X, Y, Z, BlockId, NewMetadata}}),
 	set_block(BlockCoord, {BlockId, NewMetadata});
+
 set_block({_, _, _}=BlockCoord, {_, _}=BlockData) ->
 	gen_server:cast(?MODULE, {set_block, BlockCoord, BlockData}).
 

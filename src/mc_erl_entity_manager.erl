@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2,
-         get_all_players/0, get_player/1, broadcast/1, broadcast_local/2]).
+         get_all_players/0, get_player/1, broadcast/1, broadcast_local/2, broadcast_visible/2]).
 
 -include("records.hrl").
 
@@ -37,6 +37,9 @@ broadcast(Message) ->
 	gen_server:cast(?MODULE, {broadcast, Message}).
 
 broadcast_local(_Eid, Message) -> % a placeholder for a real local-only event
+	gen_server:cast(?MODULE, {broadcast, Message}).
+
+broadcast_visible({_X, _Y, _Z}, Message) -> % a placeholder for a ranged event
 	gen_server:cast(?MODULE, {broadcast, Message}).
 
 % gen_server callbacks
