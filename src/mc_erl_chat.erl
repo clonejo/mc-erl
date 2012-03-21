@@ -8,7 +8,6 @@ broadcast(Player, Message) ->
 	broadcast(Player#player.name ++ ": " ++ Message).
 
 broadcast(Message) ->
-	io:format("[~s] broadcast: ~p~n", [?MODULE, Message]),
 	Players = mc_erl_entity_manager:get_all_players(),
 	lists:map(fun(Player) -> Player#player.player_logic ! {chat, Message} end, Players).
 

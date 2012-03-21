@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2,
-         loaded_chunks/0]).
+         loaded_chunks/0, undirectional_block_coord/1]).
 
 -include("records.hrl").
 
@@ -31,7 +31,7 @@ floor(X) when X < 0 ->
 floor(X) ->
 	trunc(X).
 
-block_coord({X, Y, Z, Direction}) ->
+undirectional_block_coord({X, Y, Z, Direction}) ->
 	case Direction of
 		0 -> {X, Y-1, Z};
 		1 -> {X, Y+1, Z};
@@ -68,7 +68,7 @@ loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 %get_compressed_chunk(...
 
 set_block({_, _, _, Direction}=C, {BlockId, _Metadata}) ->
-	BlockCoord = block_coord(C),
+	BlockCoord = undirectional_block_coord(C),
 	NewMetadata = if
 		BlockId =:= 50 orelse BlockId =:= 75 orelse BlockId =:= 76 ->
 			case Direction of

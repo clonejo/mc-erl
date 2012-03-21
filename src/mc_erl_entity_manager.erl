@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, register_player/1, delete_player/1,
-         get_all_players/0, get_player/1]).
+         get_all_players/0, get_player/1, block_delta/1]).
 
 -include("records.hrl").
 
@@ -30,11 +30,14 @@ get_all_players() ->
 get_player(Name) ->
 	gen_server:call(?MODULE, {get_player, Name}).
 
+block_delta({_X, _Y, _Z, _BlockId, _Metadata}=NewBlock) ->
+	gen_server:cast(?MODULE, {block_delta, NewBlock}).
+
 % gen_server callbacks
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
 	%Entities = ets:new(entities, [set, private]),
-	{ok, #state{players=ets:new(foo, [set, private, {keypos, 3}])}}.
+	{ok, #state{players=ets:new(players, [set, private, {keypos, 3}])}}.
 
 handle_call({register_player, Player}, _From, State) ->
 	Eid = State#state.next_eid,
@@ -46,6 +49,7 @@ handle_call({register_player, Player}, _From, State) ->
 
 handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
 	{reply, ets:delete(State#state.players, Name), State};
+
 handle_call({delete_player, Player}, _From, State) ->
 	{reply, ets:delete(State#state.players, Player#player.name), State};
 
@@ -68,6 +72,10 @@ handle_cast(stop, State) ->
 	io:format("[~s] stopping~n", [?MODULE]),
 	{stop, normal, State};
 
+handle_cast({block_delta, _NewBlock}=BlockDelta, State) ->
+	broadcast(BlockDelta, State),
+	{noreply, State};
+
 handle_cast(Message, State) ->
 	io:format("[~s] received cast: ~p~n", [?MODULE, Message]),
 	{noreply, State}.
@@ -85,4 +93,5 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
-
+broadcast(Message, State) ->
+	lists:map(fun(X) -> X#player.player_logic ! Message end, ets:tab2list(State#state.players)).
