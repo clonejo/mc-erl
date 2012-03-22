@@ -129,6 +129,8 @@ get_by_id(Id) ->
 			{200, increment_statistic, [int, byte]};
 		201 ->
 			{201, player_list_item, [string, bool, short]};
+		202 ->
+			{202, player_abilities, [bool, bool, bool, bool]};
 		254 ->
 			{254, server_list_ping, []};
 		255 ->
@@ -200,6 +202,7 @@ get_by_name(Name) ->
 		update_tile_entity -> 132;
 		increment_statistic -> 200;
 		player_list_item -> 201;
+		player_abilities -> 202;
 		server_list_ping -> 254;
 		disconnect -> 255;
 		X ->
