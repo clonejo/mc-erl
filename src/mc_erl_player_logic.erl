@@ -1,26 +1,47 @@
 -module(mc_erl_player_logic).
 % only pure erlang, only pure hardcore
--export([init_logic/2]).
+-export([start_logic/2, packet/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+
 -record(state, {writer, player, mode=creative, chunks=none, 
                 known_entities=dict:new(), last_tick, pos={0.5, 70, 0.5, 0, 0}}).%pos = {X, Y, Z, Yaw, Pitch}
 
 -include("records.hrl").
 
-init_logic(Writer, Name) ->
-	loop(#state{writer=Writer, player=#player{name=Name, player_logic=self()}}).
+start_logic(Writer, Name) ->
+	{ok, Pid} = gen_server:start_link(?MODULE, [Writer, Name], []),
+	Pid.
 
-write(Writer, Packet) -> Writer ! {packet, Packet}.
+packet(Logic, Packet) ->
+	gen_server:cast(Logic, Packet).
 
-loop(State) ->
+init([Writer, Name]) ->
+	{ok, #state{writer=Writer, player=#player{name=Name, player_logic=self()}}}.
+
+terminate(_Reason, _State) ->
+	ok.
+
+code_change(_OldVsn, State, _Extra) ->
+	{ok, State}.
+
+handle_info(Info, State) ->
+	io:format("[~s] got unknown info: ~p~n", [?MODULE, Info]),
+	{noreply, State}.
+
+handle_call(Req, _From, State) ->
+	io:format("[~s] got unknown packet: ~p~n", [?MODULE, Req]),
+	{noreply, State}.
+	
+handle_cast(Req, State) ->
 	Writer = State#state.writer,
-	receive
+	RetState = case Req of
 		% protocol reactions begin
 		login_sequence ->
 			case mc_erl_entity_manager:register_player(State#state.player) of
 				{error, name_in_use} ->
 					io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
 					write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
-					exit(disconnect); % different atom here?
+					{disconnect, "same name logged in"}; % different atom here?
 
 				NewPlayer ->
 					write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
@@ -31,14 +52,14 @@ loop(State) ->
 					
 					write(Writer, {player_position_look, [X,Y+1.62,Y,Z,Yaw,Pitch,1]}),
 					mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-					loop(State#state{chunks=Chunks, player=NewPlayer})
+					State#state{chunks=Chunks, player=NewPlayer}
 			end;
 			
 		{packet, {keep_alive, [_]}} ->
-			loop(State);
+			State;
 			
 		{packet, {player, _OnGround}} ->
-			loop(State);
+			State;
 			
 		{packet, {player_position, [X, Y, _Stance, Z, _OnGround]}} ->
 			{_OldX, _OldY, _OldZ, Yaw, Pitch} = State#state.pos,
@@ -46,13 +67,13 @@ loop(State) ->
 			broadcast_position(NewPos, State),
 			
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
-			loop(NewState);
+			NewState;
 			
 		{packet, {player_look, [Yaw, Pitch, _OnGround]}} ->
 			{X, Y, Z, _OldYaw, _OldPitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, State),
-			loop(State);
+			State;
 			
 		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]}} ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
@@ -60,42 +81,40 @@ loop(State) ->
 			
 			%io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
-			loop(NewState);
+			NewState;
 			
 		{packet, {disconnect, [Message]}} ->
 			io:format("[~s] A player disconnected: \"~s\"~n", [?MODULE, Message]),
 			mc_erl_entity_manager:delete_player(State#state.player),
 			mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
-			exit(disconnect);
+			{disconnect, "user disconnected"};
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
 			mc_erl_entity_manager:broadcast_local(State#state.player#player.eid, {block_delta, {X, Y, Z, 0, 0}}),
-			loop(State);
+			State;
 		
 		{packet, {player_block_placement, [-1, -1, -1, -1, {_BlockId, 1, _Metadata}]}} ->
 			% handle held item state update (eating food etc.)
-			loop(State);
+			State;
 			
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} when BlockId < 256 ->
 			mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
-			%{AX, AY, AZ} = mc_erl_chunk_manager:undirectional_block_coord({X, Y, Z, Direction}),
-			%mc_erl_entity_manager:broadcast_local(State#state.player#player.eid, {block_delta, {AX, AY, AZ, BlockId, Metadata}}),
-			loop(State);
+			State;
 		
 		{packet, {chat_message, [Message]}} ->
 			mc_erl_chat:broadcast(State#state.player, Message),
-			loop(State);
+			State;
 		
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
-			loop(State);
+			State;
 		% protocol reactions end
 		
 		% chat
 		{chat, Message} ->
 			write(Writer, {chat_message, [Message]}),
-			loop(State);
+			State;
 		
 		{tick, Tick} ->
 			if
@@ -103,7 +122,7 @@ loop(State) ->
 				true -> ok
 			end,
 			FinalState = State#state{last_tick=Tick},
-			loop(FinalState);
+			FinalState;
 		
 		{block_delta, {X, Y, Z, BlockId, Metadata}} ->
 			case in_range({X, Y, Z}, State) of
@@ -111,21 +130,25 @@ loop(State) ->
 					write(Writer, {block_change, [X, Y, Z, BlockId, Metadata]});
 				false -> ok
 			end,
-			loop(State);
+			State;
 		
 		{delete_entity, Eid} ->
 			NewState = delete_entity(Eid, State),
-			loop(NewState);
+			NewState;
 				
 		
 		{update_entity_position, {Eid, {_X, _Y, _Z, _Yaw, _Pitch}=NewLocation}} ->
 			NewState = update_entity(Eid, NewLocation, State),
-			loop(NewState);
+			NewState;
 					
 		
 		UnknownMessage ->
 			io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
-			loop(State)
+			State
+	end,
+	case RetState of
+		{disconnect, Reason} -> {stop,Reason,RetState};
+		Res -> {noreply, Res}
 	end.
 
 % ==== update entity location
@@ -192,6 +215,7 @@ update_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 		end
 	end.
 
+write(Writer, Packet) -> Writer ! {packet, Packet}.
 
 delete_entity(Eid, State) ->
 	case dict:is_key(Eid, State#state.known_entities) of

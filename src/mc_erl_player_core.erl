@@ -12,6 +12,7 @@ read(Socket) ->
 			io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
 			send(Socket, {disconnect,[lists:flatten(["a ...err... lang server!",167,"0",167,"100"])]});
 			%gen_tcp:close(Socket);
+
 		{handshake, [S]} ->
 			{Name,_} = lists:split(string:str(S,";")-1,S),
 			io:format("[~s] Player joining: ~s~n", [?MODULE, Name]),
@@ -20,23 +21,24 @@ read(Socket) ->
 			% last packet to read sequentially and then we're going full asynchronous mode
 			{ok, {login_request, [28, Name, "", 0, 0, 0, 0, 0]}}
 				= mc_erl_protocol:decode_packet(Socket),
-				
-			Writer = spawn_link(fun() -> async_writer(Socket) end),
-			Logic = spawn_link(fun() -> mc_erl_player_logic:init_logic(Writer, Name) end),
-			Logic ! login_sequence,
 			
-			spawn_link(fun() -> keep_alive_sender(Socket) end),
+			Writer = proc_lib:spawn_link(fun() -> proc_lib:init_ack(self()), async_writer(Socket) end),
+
+			Logic = mc_erl_player_logic:start_logic(Writer, Name),
+			mc_erl_player_logic:packet(Logic, login_sequence),
+			
+			proc_lib:spawn_link(fun() -> proc_lib:init_ack(self()), keep_alive_sender(Socket) end),
 			read(Socket, Logic)
 	end.
 
 read(Socket, Logic) ->
 	case mc_erl_protocol:decode_packet(Socket) of
 		{error,closed} ->
-			Logic ! {packet, {disconnect, ["Lost connection"]}},
+			mc_erl_player_logic:packet(Logic, {packet, {disconnect, ["Lost connection"]}}),
 			io:format("[~s] Lost connection~n", [?MODULE]);
 
 		{ok, Packet} ->
-			Logic ! {packet, Packet},
+			mc_erl_player_logic:packet(Logic, {packet, Packet}),
 			read(Socket, Logic)
 	end.
 

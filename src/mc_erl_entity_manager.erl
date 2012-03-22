@@ -133,7 +133,7 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 broadcast(Message, State) ->
-	lists:map(fun(X) -> X#player.player_logic ! Message end, ets:tab2list(State#state.players)).
+	lists:map(fun(X) -> mc_erl_player_logic:packet(X#player.player_logic, Message) end, ets:tab2list(State#state.players)).
 
 
 %% functions used by gen_server functions:
