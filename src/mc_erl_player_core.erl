@@ -23,7 +23,7 @@ read(Socket) ->
 				= mc_erl_protocol:decode_packet(Socket),
 			
 			Writer = proc_lib:spawn_link(fun() -> proc_lib:init_ack(self()), async_writer(Socket) end),
-
+			
 			Logic = mc_erl_player_logic:start_logic(Writer, Name),
 			mc_erl_player_logic:packet(Logic, login_sequence),
 			
@@ -51,7 +51,9 @@ keep_alive_sender(Socket) ->
 % asynchronous writer to pass on to logic
 async_writer(Socket) ->
 	receive
-		stop -> ok;
+		stop -> 
+			gen_tcp:close(Socket),
+			ok;
 		{packet, Data} -> 
 			send(Socket, Data),
 			async_writer(Socket)

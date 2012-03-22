@@ -22,7 +22,7 @@ to_player(Receiver, Message) when is_tuple(Receiver) ->
 	
 to_player(Logic, Message) when is_pid(Logic) ->
 	Parts = split_message(Message),
-	lists:map(fun(Part) -> mc_erl_player_logic:packet({chat, Part}} end, Parts).
+	lists:map(fun(Part) -> mc_erl_player_logic:packet(Logic, {chat, Part}) end, Parts).
 
 
 split_message(Message) ->

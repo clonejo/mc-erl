@@ -18,7 +18,10 @@ packet(Logic, Packet) ->
 init([Writer, Name]) ->
 	{ok, #state{writer=Writer, player=#player{name=Name, player_logic=self()}}}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+	State#state.writer ! stop,
+	mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
+	mc_erl_entity_manager:delete_player(State#state.player),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -41,7 +44,7 @@ handle_cast(Req, State) ->
 				{error, name_in_use} ->
 					io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
 					write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
-					{disconnect, "same name logged in"}; % different atom here?
+					{disconnect, "same name logged in", State}; % different atom here?
 
 				NewPlayer ->
 					write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
@@ -84,10 +87,7 @@ handle_cast(Req, State) ->
 			NewState;
 			
 		{packet, {disconnect, [Message]}} ->
-			io:format("[~s] A player disconnected: \"~s\"~n", [?MODULE, Message]),
-			mc_erl_entity_manager:delete_player(State#state.player),
-			mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
-			{disconnect, "user disconnected"};
+			{disconnect, Message, State};
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
@@ -146,7 +146,7 @@ handle_cast(Req, State) ->
 			State
 	end,
 	case RetState of
-		{disconnect, Reason} -> {stop,Reason,RetState};
+		{disconnect, Reason, DisconnectState} -> {stop, Reason, DisconnectState};
 		Res -> {noreply, Res}
 	end.
 
