@@ -136,16 +136,17 @@ loop(State) ->
 								DZ = Z - OldZ,
 								DDistance = lists:max([DX, DY, DZ]),
 								FracYaw = trunc(Yaw*256/360),
-								FracPitch = trunc(Yaw*256/360),
+								FracPitch = trunc(Pitch*256/360),
 								
-								ChangePacket = if
+								ChangePackets = if
 									DDistance >= 4 ->
-										{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]};
+										[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
 									true ->
-										{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]}
+										[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
+										 {entity_head_look, [Eid, FracYaw]}]
 								end,
 								NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
-								write(Writer, ChangePacket),
+								lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
 								State#state{known_entities=NewKnownEntities};
 							false ->
 								EntityData = mc_erl_entity_manager:entity_details(Eid),
