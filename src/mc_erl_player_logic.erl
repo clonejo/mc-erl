@@ -70,7 +70,6 @@ loop(State) ->
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
-			mc_erl_entity_manager:broadcast_local(State#state.player#player.eid, {block_delta, {X, Y, Z, 0, 0}}),
 			loop(State);
 		
 		{packet, {player_block_placement, [-1, -1, -1, -1, {_BlockId, 1, _Metadata}]}} ->
@@ -79,8 +78,6 @@ loop(State) ->
 			
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} when BlockId < 256 ->
 			mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
-			%{AX, AY, AZ} = mc_erl_chunk_manager:undirectional_block_coord({X, Y, Z, Direction}),
-			%mc_erl_entity_manager:broadcast_local(State#state.player#player.eid, {block_delta, {AX, AY, AZ, BlockId, Metadata}}),
 			loop(State);
 		
 		{packet, {chat_message, [Message]}} ->
