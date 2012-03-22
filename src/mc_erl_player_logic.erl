@@ -248,7 +248,7 @@ check_chunks(Writer, PlayerChunk, LoadedChunks) ->
 
 load_chunks(_Writer, []) -> ok;
 load_chunks(Writer, [{X, Z}|Rest]) ->
-	write(Writer, {pre_chunk, [X, Z, 1]}),
+	write(Writer, {pre_chunk, [X, Z, true]}),
 	ChunkData = mc_erl_chunk_manager:get_chunk({X, Z}),
 	write(Writer, {map_chunk, [X, Z, {parsed, ChunkData}]}),
 	load_chunks(Writer, Rest);
@@ -258,6 +258,6 @@ load_chunks(Writer, ChunksSet) ->
 
 unload_chunks(_Writer, []) -> ok;
 unload_chunks(Writer, [{X, Z}|Rest]) ->
-	write(Writer, {pre_chunk, [X, Z, 0]}),
+	write(Writer, {pre_chunk, [X, Z, false]}),
 	unload_chunks(Writer, Rest).
 

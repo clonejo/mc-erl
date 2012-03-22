@@ -19,7 +19,7 @@ read(Socket) ->
 			send(Socket, {handshake, ["-"]}),
 			
 			% last packet to read sequentially and then we're going full asynchronous mode
-			{ok, {login_request, [28, Name, "", 0, 0, 0, 0, 0]}}
+			{ok, {login_request, [29, Name, "", 0, 0, 0, 0, 0]}}
 				= mc_erl_protocol:decode_packet(Socket),
 			
 			Writer = proc_lib:spawn_link(fun() -> proc_lib:init_ack(self()), async_writer(Socket) end),
