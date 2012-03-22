@@ -91,7 +91,6 @@ handle_cast(Req, State) ->
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
-			mc_erl_entity_manager:broadcast_local(State#state.player#player.eid, {block_delta, {X, Y, Z, 0, 0}}),
 			State;
 		
 		{packet, {player_block_placement, [-1, -1, -1, -1, {_BlockId, 1, _Metadata}]}} ->
