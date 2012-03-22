@@ -1,6 +1,6 @@
 -module(mc_erl_protocol).
 
--export([decode_packet/1, encode_packet/1]).
+-export([decode_packet/1, encode_packet/1, to_absint/1, from_absint/1]).
 
 -include("records.hrl").
 
@@ -23,6 +23,14 @@
 	16#132, 16#133, 16#134, 16#135, %IRON
 	16#136, 16#137, 16#138, 16#139, %DIAMOND
 	16#13A, 16#13B, 16#13C, 16#13D]). %GOLD
+
+% Protocol weirdness handling
+to_absint(Value) ->
+	trunc(Value*32).
+
+from_absint(Value) ->
+	Value/32.
+
 
 % ======================================================================
 % decoding

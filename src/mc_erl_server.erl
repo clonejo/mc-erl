@@ -53,7 +53,8 @@ handle_cast({new_connection, Socket}, State) ->
 	gen_tcp:controlling_process(Socket, Pid),
 	{noreply, State};
 
-handle_cast({tick, _Time}, State) ->
+handle_cast({tick, _Time}=Tick, State) ->
+	mc_erl_entity_manager:broadcast(Tick),
 	{noreply, State};
 
 handle_cast(stop, State) ->

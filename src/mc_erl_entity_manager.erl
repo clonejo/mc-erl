@@ -1,7 +1,7 @@
 -module(mc_erl_entity_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2,
+-export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2, entity_details/1,
          get_all_players/0, get_player/1, broadcast/1, broadcast_local/2, broadcast_visible/2]).
 
 -include("records.hrl").
@@ -9,7 +9,7 @@
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {players, next_eid=0}).
+-record(state, {players, entities, next_eid=0}).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -33,6 +33,9 @@ get_all_players() ->
 get_player(Name) ->
 	gen_server:call(?MODULE, {get_player, Name}).
 
+entity_details(Eid) ->
+	gen_server:call(?MODULE, {entity_details, Eid}).
+
 broadcast(Message) ->
 	gen_server:cast(?MODULE, {broadcast, Message}).
 
@@ -46,20 +49,29 @@ broadcast_visible({_X, _Y, _Z}, Message) -> % a placeholder for a ranged event
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
 	%Entities = ets:new(entities, [set, private]),
-	{ok, #state{players=ets:new(players, [set, private, {keypos, 3}])}}.
+	{ok, #state{players=ets:new(players, [set, private, {keypos, 3}]),
+		entities=ets:new(entities, [set, private, {keypos, 2}])}}.
 
 handle_call({register_player, Player}, _From, State) ->
 	Eid = State#state.next_eid,
 	NewPlayer = Player#player{eid=Eid},
 	case ets:insert_new(State#state.players, NewPlayer) of
 		false -> {reply, {error, name_in_use}, State};
-		true -> {reply, NewPlayer, State#state{next_eid=Eid+1}}
+		true ->
+			ets:insert_new(State#state.entities, #entity_data{eid=Eid, type=player, metadata=#player_metadata{name=Player#player.name, holding_item=0}}),
+			{reply, NewPlayer, State#state{next_eid=Eid+1}}
 	end;
 
 handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
+	[Player] = ets:lookup(State#state.players, Name),
+	broadcast({delete_entity, Player#player.eid}),
+	ets:delete(State#state.entities, Player#player.eid),
+	
 	{reply, ets:delete(State#state.players, Name), State};
 
 handle_call({delete_player, Player}, _From, State) ->
+	broadcast({delete_entity, Player#player.eid}),
+	ets:delete(State#state.entities, Player#player.eid),
 	{reply, ets:delete(State#state.players, Player#player.name), State};
 
 handle_call(get_all_players, _From, State) ->
@@ -69,6 +81,10 @@ handle_call(get_all_players, _From, State) ->
 handle_call({get_player, Name}, _From, State) ->
 	[Player] = ets:lookup(State#state.players, Name),
 	{reply, Player, State};
+
+handle_call({entity_details, Eid}, _From, State) ->
+	[Details] = ets:lookup(State#state.entities, Eid),
+	{reply, Details, State};
 
 handle_call(Message, _From, State) ->
 	case Message of

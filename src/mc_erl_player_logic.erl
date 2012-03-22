@@ -1,8 +1,8 @@
 -module(mc_erl_player_logic).
 % only pure erlang, only pure hardcore
 -export([init_logic/2]).
--record(state, {writer, player, eid, chunks=none, 
-                entity_details=dict:new(), pos={0.5, 70, 0.5}}).
+-record(state, {writer, player, mode=creative, chunks=none, 
+                known_entities=dict:new(), last_tick, pos={0.5, 70, 0.5, 0, 0}}).%pos = {X, Y, Z, Yaw, Pitch}
 
 -include("records.hrl").
 
@@ -25,9 +25,11 @@ loop(State) ->
 				NewPlayer ->
 					write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
 					write(Writer, {spawn_position, [0, 0, 0]}),
-					Chunks = check_chunks(Writer, State#state.pos),
-					{X, Y, Z} = State#state.pos,
-					write(Writer, {player_position_look, [X,Y+1.62,Y,Z,0,0,1]}),
+					{X, Y, Z, Yaw, Pitch} = State#state.pos,
+					
+					Chunks = check_chunks(Writer, {X, Y, Z}),
+					
+					write(Writer, {player_position_look, [X,Y+1.62,Y,Z,Yaw,Pitch,1]}),
 					mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
 					loop(State#state{chunks=Chunks, player=NewPlayer})
 			end;
@@ -39,15 +41,25 @@ loop(State) ->
 			loop(State);
 			
 		{packet, {player_position, [X, Y, _Stance, Z, _OnGround]}} ->
-			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks)},
+			{_OldX, _OldY, _OldZ, Yaw, Pitch} = State#state.pos,
+			NewPos = {X, Y, Z, Yaw, Pitch},
+			broadcast_position(NewPos, State),
+			
+			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			loop(NewState);
 			
-		{packet, {player_look, [_Yaw, _Pitch, _OnGround]}} ->
+		{packet, {player_look, [Yaw, Pitch, _OnGround]}} ->
+			{X, Y, Z, _OldYaw, _OldPitch} = State#state.pos,
+			NewPos = {X, Y, Z, Yaw, Pitch},
+			broadcast_position(NewPos, State),
 			loop(State);
 			
-		{packet, {player_position_look, [X, Y, _Stance, Z, _Yaw, _Pitch, _OnGround]=Position}} ->
+		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]=Position}} ->
+			NewPos = {X, Y, Z, Yaw, Pitch},
+			broadcast_position(NewPos, State),
+			
 			io:format("pos upd: ~p~n", [Position]),
-			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks)},
+			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			loop(NewState);
 			
 		{packet, {disconnect, [Message]}} ->
@@ -85,13 +97,76 @@ loop(State) ->
 			write(Writer, {chat_message, [Message]}),
 			loop(State);
 		
+		{tick, Tick} ->
+			NewState = State#state{last_tick=Tick},
+			loop(NewState);
+		
 		{block_delta, {X, Y, Z, BlockId, Metadata}} ->
-			ChunkPos = mc_erl_chunk_manager:coord_to_chunk({X, Y, Z}),
-			case sets:is_element(ChunkPos, State#state.chunks) of
+			case in_range({X, Y, Z}, State) of
 				true ->
 					write(Writer, {block_change, [X, Y, Z, BlockId, Metadata]});
 				false -> ok
 			end,
+			loop(State);
+		
+		{delete_entity, Eid} ->
+			NewState = case dict:is_key(Eid, State#state.known_entities) of
+				true ->	
+					write(Writer, {destroy_entity, [Eid]}),
+					NewKnownEntities = dict:erase(Eid, State#state.known_entities),
+					State#state{known_entities=NewKnownEntities};
+				false ->
+					State
+			end,
+			loop(NewState);
+				
+		
+		{update_entity_position, {Eid, {X, Y, Z, Yaw, Pitch}}} ->
+			NewState = if
+				Eid == State#state.player#player.eid ->
+					State;
+				true -> case in_range({X, Y, Z}, State) of
+					false -> State;
+					true ->
+						case dict:is_key(Eid, State#state.known_entities) of
+							true ->
+								{OldX, OldY, OldZ, _OldYaw, _OldPitch, Data} = dict:fetch(Eid, State#state.known_entities),
+								DX = X - OldX,
+								DY = Y - OldY,
+								DZ = Z - OldZ,
+								DDistance = lists:max([DX, DY, DZ]),
+								FracYaw = trunc(Yaw*256/360),
+								FracPitch = trunc(Yaw*256/360),
+								
+								ChangePacket = if
+									DDistance >= 4 ->
+										{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]};
+									true ->
+										{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]}
+								end,
+								NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
+								write(Writer, ChangePacket),
+								State#state{known_entities=NewKnownEntities};
+							false ->
+								EntityData = mc_erl_entity_manager:entity_details(Eid),
+								if
+									EntityData#entity_data.type == player ->
+										PName = EntityData#entity_data.metadata#player_metadata.name,
+										PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
+										write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
+										NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
+										State#state{known_entities=NewKnownEntities};
+									true ->
+										State
+								end
+						end
+				end
+			end,
+			loop(NewState);
+					
+		
+		UnknownMessage ->
+			io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
 			loop(State)
 		
 		% {update_entity, Eid, {X, Y, Z, Yaw, Pitch}=NewPosition} ->
@@ -99,8 +174,14 @@ loop(State) ->
 				% {ok, {player, PName}} -> 
 	end.
 		
+broadcast_position(Position, State) ->
+	Eid = State#state.player#player.eid,
+	mc_erl_entity_manager:broadcast_local(Eid, {update_entity_position, {Eid, Position}}).
 
-		
+in_range({X, Y, Z}, State) ->
+	ChunkPos = mc_erl_chunk_manager:coord_to_chunk({X, Y, Z}),
+	sets:is_element(ChunkPos, State#state.chunks).
+
 check_chunks(Writer, PlayerChunk) ->
 	check_chunks(Writer, PlayerChunk, sets:new()).
 
