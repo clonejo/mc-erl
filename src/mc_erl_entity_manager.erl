@@ -3,7 +3,7 @@
 
 -export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2, entity_details/1,
          get_all_players/0, get_player/1, broadcast/1, broadcast_local/2, broadcast_visible/2]).
-
+%-define(dev, void).
 -include("records.hrl").
 
 % gen_server callbacks
@@ -54,11 +54,11 @@ init([]) ->
 
 handle_call({register_player, Player}, _From, State) ->
 	Eid = State#state.next_eid,
-	NewPlayer = Player#player{eid=Eid},
+	NewPlayer = escape_player_name(Player#player{eid=Eid}, Eid),
 	case ets:insert_new(State#state.players, NewPlayer) of
 		false -> {reply, {error, name_in_use}, State};
 		true ->
-			ets:insert_new(State#state.entities, #entity_data{eid=Eid, type=player, metadata=#player_metadata{name=Player#player.name, holding_item=0}}),
+			ets:insert_new(State#state.entities, #entity_data{eid=Eid, type=player, metadata=#player_metadata{name=NewPlayer#player.name, holding_item=0}}),
 			{reply, NewPlayer, State#state{next_eid=Eid+1}}
 	end;
 
@@ -120,3 +120,14 @@ code_change(_OldVsn, State, _Extra) ->
 
 broadcast(Message, State) ->
 	lists:map(fun(X) -> X#player.player_logic ! Message end, ets:tab2list(State#state.players)).
+
+
+%% functions used by gen_server functions:
+-ifdef(dev).
+escape_player_name(Player, Eid) ->
+	Player#player{name=Player#player.name ++ "#" ++ integer_to_list(Eid)}.
+-else.
+escape_player_name(Player, _Eid) ->
+	Player.
+-endif.
+

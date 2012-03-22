@@ -58,7 +58,7 @@ loop(State) ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, State),
 			
-			io:format("pos upd: ~p~n", [Position]),
+			%io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			loop(NewState);
 			
