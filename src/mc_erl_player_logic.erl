@@ -54,11 +54,9 @@ loop(State) ->
 			broadcast_position(NewPos, State),
 			loop(State);
 			
-		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]=Position}} ->
+		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]}} ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, State),
-			
-			io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			loop(NewState);
 			
@@ -98,8 +96,12 @@ loop(State) ->
 			loop(State);
 		
 		{tick, Tick} ->
-			NewState = State#state{last_tick=Tick},
-			loop(NewState);
+			if
+				(Tick rem 20) == 0 -> precise_positions(State);
+				true -> ok
+			end,
+			FinalState = State#state{last_tick=Tick},
+			loop(FinalState);
 		
 		{block_delta, {X, Y, Z, BlockId, Metadata}} ->
 			case in_range({X, Y, Z}, State) of
@@ -110,79 +112,106 @@ loop(State) ->
 			loop(State);
 		
 		{delete_entity, Eid} ->
-			NewState = case dict:is_key(Eid, State#state.known_entities) of
-				true ->	
-					write(Writer, {destroy_entity, [Eid]}),
-					NewKnownEntities = dict:erase(Eid, State#state.known_entities),
-					State#state{known_entities=NewKnownEntities};
-				false ->
-					State
-			end,
+			NewState = delete_entity(Eid, State),
 			loop(NewState);
 				
 		
-		{update_entity_position, {Eid, {X, Y, Z, Yaw, Pitch}}} ->
-			NewState = if
-				Eid == State#state.player#player.eid ->
-					State;
-				true -> case in_range({X, Y, Z}, State) of
-					false -> State;
-					true ->
-						case dict:is_key(Eid, State#state.known_entities) of
-							true ->
-								{OldX, OldY, OldZ, _OldYaw, _OldPitch, Data} = dict:fetch(Eid, State#state.known_entities),
-								DX = X - OldX,
-								DY = Y - OldY,
-								DZ = Z - OldZ,
-								DDistance = lists:max([DX, DY, DZ]),
-								FracYaw = trunc(Yaw*256/360),
-								FracPitch = trunc(Pitch*256/360),
-								
-								ChangePackets = if
-									DDistance >= 4 ->
-										[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
-									true ->
-										[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
-										 {entity_head_look, [Eid, FracYaw]}]
-								end,
-								NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
-								lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
-								State#state{known_entities=NewKnownEntities};
-							false ->
-								EntityData = mc_erl_entity_manager:entity_details(Eid),
-								if
-									EntityData#entity_data.type == player ->
-										PName = EntityData#entity_data.metadata#player_metadata.name,
-										PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
-										write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
-										NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
-										State#state{known_entities=NewKnownEntities};
-									true ->
-										State
-								end
-						end
-				end
-			end,
+		{update_entity_position, {Eid, {_X, _Y, _Z, _Yaw, _Pitch}=NewLocation}} ->
+			NewState = update_entity(Eid, NewLocation, State),
 			loop(NewState);
 					
 		
 		UnknownMessage ->
 			io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
 			loop(State)
-		
-		% {update_entity, Eid, {X, Y, Z, Yaw, Pitch}=NewPosition} ->
-			% case find(Eid, State#state.entities) of
-				% {ok, {player, PName}} -> 
 	end.
-		
+
+% ==== update entity location
+precise_positions(State) ->
+	Writer = State#state.writer,
+	MyEid = State#state.player#player.eid,
+	Entities = mc_erl_entity_manager:get_all_entities(),
+	lists:foreach(fun(Entity) ->
+			Eid = Entity#entity_data.eid,
+			{X, Y, Z, Yaw, Pitch} = Entity#entity_data.location,
+			FracYaw = trunc(Yaw*256/360),
+			FracPitch = trunc(Pitch*256/360),
+			write(Writer, {entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]})			
+		end, lists:filter(fun(P) -> 
+			{X, Y, Z, _Yaw, _Pitch} = P#entity_data.location,
+			in_range({X, Y, Z}, State) and (MyEid /= P#entity_data.eid)
+		end, Entities)).
+
+update_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
+	Writer = State#state.writer,
+	if
+		Eid == State#state.player#player.eid ->
+			State;
+		true -> case in_range({X, Y, Z}, State) of
+			false ->
+				case dict:is_key(Eid, State#state.known_entities) of 
+					true -> delete_entity(Eid, State);
+					false -> State
+				end;
+			true ->
+				case dict:is_key(Eid, State#state.known_entities) of
+					true ->
+						{OldX, OldY, OldZ, _OldYaw, _OldPitch, Data} = dict:fetch(Eid, State#state.known_entities),
+						DX = X - OldX,
+						DY = Y - OldY,
+						DZ = Z - OldZ,
+						DDistance = lists:max([DX, DY, DZ]),
+						FracYaw = trunc(Yaw*256/360),
+						FracPitch = trunc(Pitch*256/360),
+						
+						ChangePackets = if
+							DDistance >= 4 ->
+								[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
+							true ->
+								[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
+								 {entity_head_look, [Eid, FracYaw]}]
+						end,
+						NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
+						lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
+						State#state{known_entities=NewKnownEntities};
+					false ->
+						EntityData = mc_erl_entity_manager:entity_details(Eid),
+						if
+							EntityData#entity_data.type == player ->
+								PName = EntityData#entity_data.metadata#player_metadata.name,
+								PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
+								write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
+								NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
+								State#state{known_entities=NewKnownEntities};
+							true ->
+								State
+						end
+				end
+		end
+	end.
+
+
+delete_entity(Eid, State) ->
+	case dict:is_key(Eid, State#state.known_entities) of
+		true ->	
+			write(State#state.writer, {destroy_entity, [Eid]}),
+			NewKnownEntities = dict:erase(Eid, State#state.known_entities),
+			State#state{known_entities=NewKnownEntities};
+		false ->
+			State
+	end.
+
+% ==== Send position to everyone
 broadcast_position(Position, State) ->
 	Eid = State#state.player#player.eid,
 	mc_erl_entity_manager:broadcast_local(Eid, {update_entity_position, {Eid, Position}}).
 
+% ==== Checks if location is in visible range
 in_range({X, Y, Z}, State) ->
 	ChunkPos = mc_erl_chunk_manager:coord_to_chunk({X, Y, Z}),
 	sets:is_element(ChunkPos, State#state.chunks).
 
+% ==== Chunks loading
 check_chunks(Writer, PlayerChunk) ->
 	check_chunks(Writer, PlayerChunk, sets:new()).
 

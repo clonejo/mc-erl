@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2, entity_details/1,
-         get_all_players/0, get_player/1, broadcast/1, broadcast_local/2, broadcast_visible/2]).
+         get_all_entities/0, get_all_players/0, get_player/1, broadcast/1, broadcast_local/2, broadcast_visible/2]).
 
 -include("records.hrl").
 
@@ -29,6 +29,9 @@ move_entity(Eid, [_X, _Y, _Z, _Pitch, _Yaw]=NewLocation) ->
 
 get_all_players() ->
 	gen_server:call(?MODULE, get_all_players).
+
+get_all_entities() ->
+	gen_server:call(?MODULE, get_all_entities).
 
 get_player(Name) ->
 	gen_server:call(?MODULE, {get_player, Name}).
@@ -78,6 +81,10 @@ handle_call(get_all_players, _From, State) ->
 	Players = ets:tab2list(State#state.players),
 	{reply, Players, State};
 
+handle_call(get_all_entities, _From, State) ->
+	Entities = ets:tab2list(State#state.entities),
+	{reply, Entities, State};
+
 handle_call({get_player, Name}, _From, State) ->
 	[Player] = ets:lookup(State#state.players, Name),
 	{reply, Player, State};
@@ -97,6 +104,13 @@ handle_cast(stop, State) ->
 	io:format("[~s] stopping~n", [?MODULE]),
 	{stop, normal, State};
 
+handle_cast({broadcast, {update_entity_position, {Eid, Position}}=Message}, State) ->
+	[Player] = ets:lookup(State#state.entities, Eid),
+	NewPlayer = Player#entity_data{location=Position},
+	ets:insert(State#state.entities, NewPlayer),
+	broadcast(Message, State),
+	{noreply, State};
+	
 handle_cast({broadcast, Message}, State) ->
 	broadcast(Message, State),
 	{noreply, State};
