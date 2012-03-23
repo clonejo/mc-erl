@@ -89,7 +89,8 @@ set_block({_, _, _, Direction}=C, {BlockId, Metadata}) ->
 			{error, forbidden_block_id, BlockCoord}
 	end;
 
-set_block({_, _, _}=BlockCoord, {_, _}=BlockData) ->
+set_block({X, Y, Z}=BlockCoord, {BlockId, Metadata}=BlockData) ->
+	mc_erl_entity_manager:broadcast_visible(BlockCoord, {block_delta, {X, Y, Z, BlockId, Metadata}}),
 	gen_server:cast(?MODULE, {set_block, BlockCoord, BlockData}).
 
 % gen_server callbacks
