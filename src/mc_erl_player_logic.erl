@@ -47,7 +47,7 @@ handle_cast(Req, State) ->
 						{error, name_in_use} ->
 							io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
 							write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
-							{disconnect, "same name logged in", State}; % different atom here?
+							{disconnect, {multiple_login, State#state.player#player.name}, State}; % different atom here?
 		
 						NewPlayer ->
 							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
@@ -67,7 +67,7 @@ handle_cast(Req, State) ->
 				false ->
 					io:format("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
 					write(Writer, {disconnect, ["Invalid username :("]}),
-					{disconnect, "invalid username", State}
+					{disconnect, {invalid_username, State#state.player#player.name}, State}
 			end;
 			
 		{packet, {keep_alive, [_]}} ->
@@ -99,7 +99,7 @@ handle_cast(Req, State) ->
 			NewState;
 			
 		{packet, {disconnect, [Message]}} ->
-			{disconnect, Message, State};
+			{disconnect, {graceful, Message}, State};
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
@@ -165,13 +165,35 @@ handle_cast(Req, State) ->
 			NewState = update_entity(Eid, NewLocation, State),
 			NewState;
 					
+		net_disconnect ->
+			{disconnect, net_disconnect, State};
 		
 		UnknownMessage ->
 			io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
 			State
 	end,
 	case RetState of
+		% graceful stops
+		{disconnect, net_disconnect, DisconnectState} ->
+			io:format("[~s] Connection lost with ~s~n", [?MODULE, DisconnectState#state.player#player.name]),
+			{stop, normal, DisconnectState};
+
+		{disconnect, {graceful, _QuitMessage}, DisconnectState} ->
+			io:format("[~s] Player ~s has quit~n", [?MODULE, DisconnectState#state.player#player.name]),
+			{stop, normal, DisconnectState};
+		
+		% not graceful stops
+		{disconnect, {invalid_username, AttemptedName}, DisconnectState} ->
+			io:format("[~s] Invalid username trying to log in: ~s~n", [?MODULE, AttemptedName]),
+			{stop, normal, DisconnectState};
+
+		{disconnect, {multiple_login, AttemptedName}, DisconnectState} ->
+			io:format("[~s] Multiple login: ~s~n", [?MODULE, AttemptedName]),
+			{stop, normal, DisconnectState};
+
 		{disconnect, Reason, DisconnectState} -> {stop, Reason, DisconnectState};
+		
+		% right path
 		Res -> {noreply, Res}
 	end.
 
