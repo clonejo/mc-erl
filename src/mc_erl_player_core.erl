@@ -22,19 +22,19 @@ read(Socket) ->
 			{ok, {login_request, [29, Name, "", 0, 0, 0, 0, 0]}}
 				= mc_erl_protocol:decode_packet(Socket),
 			
-			Writer = proc_lib:spawn_link(fun() -> proc_lib:init_ack(self()), async_writer(Socket) end),
+			Writer = proc_lib:spawn_link(fun() -> async_writer(Socket) end),
 			
 			Logic = mc_erl_player_logic:start_logic(Writer, Name),
 			mc_erl_player_logic:packet(Logic, login_sequence),
 			
-			proc_lib:spawn_link(fun() -> proc_lib:init_ack(self()), keep_alive_sender(Socket) end),
+			proc_lib:spawn_link(fun() -> keep_alive_sender(Socket) end),
 			read(Socket, Logic)
 	end.
 
 read(Socket, Logic) ->
 	case mc_erl_protocol:decode_packet(Socket) of
 		{error,closed} ->
-			mc_erl_player_logic:packet(Logic, {packet, net_disconnect});
+			mc_erl_player_logic:packet(Logic, net_disconnect);
 
 		{ok, Packet} ->
 			mc_erl_player_logic:packet(Logic, {packet, Packet}),

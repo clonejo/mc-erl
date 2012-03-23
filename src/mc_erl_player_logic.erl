@@ -115,7 +115,7 @@ handle_cast(Req, State) ->
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			case State#state.player#player.mode of
-				creative -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0});
+				creative -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}), State;
 				survival -> void
 			end,
 			State;

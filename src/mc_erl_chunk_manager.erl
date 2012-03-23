@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2,
-         loaded_chunks/0, undirectional_block_coord/1]).
+         loaded_chunks/0, undirectional_block_coord/1, tick/1]).
 
 -include("records.hrl").
 
@@ -64,6 +64,9 @@ get_chunk({_, _}=Coord) ->
 	gen_server:call(?MODULE, {get_chunk, Coord}).
 
 loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
+
+tick(Time) ->
+	gen_server:cast(?MODULE, {tick, Time}).
 
 %get_compressed_chunk(...
 
@@ -150,6 +153,9 @@ handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 		                     {Y div 16, NewChunk})},
 	
 	ets:insert(Chunks, {coord_to_chunk(Coord), NewColumn}),
+	{noreply, Chunks};
+
+handle_cast({tick, Time}, Chunks) ->
 	{noreply, Chunks};
 
 handle_cast(stop, State) ->
