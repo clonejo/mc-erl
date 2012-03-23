@@ -6,6 +6,8 @@
 -record(state, {writer, player, mode=creative, chunks=none, 
                 known_entities=dict:new(), last_tick, pos={0.5, 70, 0.5, 0, 0}}).%pos = {X, Y, Z, Yaw, Pitch}
 
+-record(ke_metadata, {relocations=0}).
+
 -include("records.hrl").
 
 start_logic(Writer, Name) ->
@@ -186,7 +188,7 @@ handle_cast(Req, State) ->
 			
 		{tick, Tick} ->
 			if
-				(Tick rem 20) == 0 -> precise_positions(State);
+				% (Tick rem 20) == 0 -> precise_positions(State);
 				true -> ok
 			end,
 			FinalState = State#state{last_tick=Tick},
@@ -293,7 +295,8 @@ write(Writer, Packet) -> Writer ! {packet, Packet}.
 
 move_known_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 	Writer = State#state.writer,
-	{OldX, OldY, OldZ, _OldYaw, _OldPitch, Data} = dict:fetch(Eid, State#state.known_entities),
+	{OldX, OldY, OldZ, _OldYaw, _OldPitch, KEMetadata} = dict:fetch(Eid, State#state.known_entities),
+	RelativeRelocations = KEMetadata#ke_metadata.relocations,
 	DX = X - OldX,
 	DY = Y - OldY,
 	DZ = Z - OldZ,
@@ -302,13 +305,14 @@ move_known_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 	FracPitch = trunc(Pitch*256/360),
 	
 	ChangePackets = if
-		DDistance >= 4 ->
+		(DDistance >= 4) or (RelativeRelocations >= 20) ->
+			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, KEMetadata#ke_metadata{relocations=0}}, State#state.known_entities),
 			[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
 		true ->
+			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, KEMetadata#ke_metadata{relocations=RelativeRelocations + 1}}, State#state.known_entities),
 			[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
 			 {entity_head_look, [Eid, FracYaw]}]
 	end,
-	NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
 	lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
 	State#state{known_entities=NewKnownEntities}.
 
@@ -320,7 +324,7 @@ spawn_new_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 			PName = EntityData#entity_data.metadata#player_metadata.name,
 			PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
 			write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
-			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
+			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, #ke_metadata{}}, State#state.known_entities),
 			State#state{known_entities=NewKnownEntities};
 		true ->
 			State
