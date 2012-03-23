@@ -121,6 +121,15 @@ handle_cast(Req, State) ->
 			mc_erl_chat:broadcast(State#state.player, Message),
 			State;
 		
+		{packet, {animation, [Eid, AnimationId]}} ->
+			MyEid = State#state.player#player.eid,
+			if
+				MyEid == Eid ->
+					mc_erl_entity_manager:broadcast_local(MyEid, {animate, State#state.player#player.eid, AnimationId});
+				true -> ok
+			end,
+			State;
+		
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
 			State;
@@ -131,6 +140,13 @@ handle_cast(Req, State) ->
 			write(Writer, {chat_message, [Message]}),
 			State;
 		
+		{animate, Eid, AnimationId} ->
+			case dict:is_key(Eid, State#state.known_entities) of
+				true -> write(Writer, {animation, [Eid, AnimationId]});
+				false -> ok
+			end,
+			State;
+			
 		{tick, Tick} ->
 			if
 				(Tick rem 20) == 0 -> precise_positions(State);
