@@ -37,7 +37,8 @@ handle_call(Req, _From, State) ->
 	
 handle_cast(Req, State) ->
 	Writer = State#state.writer,
-	PlayerEid = State#state.player#player.eid,
+	MyPlayer = State#state.player,
+	PlayerEid = MyPlayer#player.eid,
 	RetState = case Req of
 		% protocol reactions begin
 		login_sequence ->
@@ -56,9 +57,9 @@ handle_cast(Req, State) ->
 								survival -> 0
 							end,
 							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", Mode, 0, 0, 0, 100]}),
+							send_inventory(State),
 							%debug:
-							NewInv = array:set(40, {3, 64, 0}, NewPlayer#player.inventory),
-							send_inventory(State#state{player=NewPlayer#player{inventory=NewInv}}),
+							NewState = update_slot(State#state{player=NewPlayer}, 40, {replace, {3, 10, 0}}),
 							write(Writer, {spawn_position, [0, 0, 0]}),
 							{X, Y, Z, Yaw, Pitch} = StartPos = State#state.pos,
 							
@@ -70,12 +71,12 @@ handle_cast(Req, State) ->
 							broadcast_position(StartPos, NewPlayer#player.eid),
 							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-							State#state{chunks=Chunks, player=NewPlayer}
+							NewState#state{chunks=Chunks}
 					end;
 				false ->
 					io:format("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
 					write(Writer, {disconnect, ["Invalid username :("]}),
-					{disconnect, {invalid_username, State#state.player#player.name}, State}
+					{disconnect, {invalid_username, MyPlayer#player.name}, State}
 			end;
 			
 		{packet, {keep_alive, [_]}} ->
@@ -87,20 +88,20 @@ handle_cast(Req, State) ->
 		{packet, {player_position, [X, Y, _Stance, Z, _OnGround]}} ->
 			{_OldX, _OldY, _OldZ, Yaw, Pitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
-			broadcast_position(NewPos, State#state.player#player.eid),
+			broadcast_position(NewPos, MyPlayer#player.eid),
 			
-			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
+			NewState = State#state{chunks=check_chunks(Writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			NewState;
 			
 		{packet, {player_look, [Yaw, Pitch, _OnGround]}} ->
 			{X, Y, Z, _OldYaw, _OldPitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
-			broadcast_position(NewPos, State#state.player#player.eid),
+			broadcast_position(NewPos, MyPlayer#player.eid),
 			State;
 			
 		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]}} ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
-			broadcast_position(NewPos, State#state.player#player.eid),
+			broadcast_position(NewPos, MyPlayer#player.eid),
 			
 			%io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
@@ -110,18 +111,18 @@ handle_cast(Req, State) ->
 			{disconnect, {graceful, Message}, State};
 		
 		{packet, {holding_change, [N]}} when N >= 0 andalso N =< 8 ->
-			NewPlayer = State#state.player#player{selected_slot=N},
+			NewPlayer = MyPlayer#player{selected_slot=N},
 			State#state{player=NewPlayer};
 		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
-			case State#state.player#player.mode of
+			case MyPlayer#player.mode of
 				creative -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0});
 				survival -> void
 			end,
 			State;
 		
 		{packet, {player_digging, [2, X, Y, Z, _]}} ->
-			case State#state.player#player.mode of
+			case MyPlayer#player.mode of
 				creative -> void;
 				survival -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0})
 			end,
@@ -135,12 +136,24 @@ handle_cast(Req, State) ->
 			State;
 			
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, _Count, Metadata}]}} when BlockId < 256 ->
-			case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}) of
-				ok -> ok;
-				{error, forbidden_block_id, {RX, RY, RZ}} ->
-					write(Writer, {block_change, [RX, RY, RZ, 0, 0]})
-			end,
-			State;
+			case MyPlayer#player.mode of
+				creative ->
+					case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}) of
+						ok -> ok;
+						{error, forbidden_block_id, {RX, RY, RZ}} ->
+							write(Writer, {block_change, [RX, RY, RZ, 0, 0]})
+					end,
+					State;
+				survival ->
+					SelectedSlot = MyPlayer#player.selected_slot+36,
+					Inv = MyPlayer#player.inventory,
+					case array:get(SelectedSlot, Inv) of
+						{BlockId, _, Metadata} ->
+							mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
+							update_slot(State, SelectedSlot, reduce);
+						_ -> {disconnect, {cheating, wrong_slot}, State}
+					end
+			end;
 		
 		{packet, {entity_action, [PlayerEid, _P]}} ->
 			% crouching, leaving bed, sprinting
@@ -229,6 +242,10 @@ handle_cast(Req, State) ->
 
 		{disconnect, {multiple_login, AttemptedName}, DisconnectState} ->
 			io:format("[~s] Multiple login: ~s~n", [?MODULE, AttemptedName]),
+			{stop, normal, DisconnectState};
+		
+		{disconnect, {cheating, Reason}, DisconnectState} ->
+			io:format("[~s] player is kicked due cheating: ~p~n", [?MODULE, Reason]),
 			{stop, normal, DisconnectState};
 
 		{disconnect, Reason, DisconnectState} -> {stop, Reason, DisconnectState};
@@ -327,6 +344,24 @@ send_player_list(State) ->
 send_inventory(State) ->
 	Writer = State#state.writer,
 	write(Writer, {window_items, [0, array:to_list(State#state.player#player.inventory)]}).
+
+%% action = reduce | {replace, Slot}
+update_slot(State, SlotNo, Action) ->
+	Writer = State#state.writer,
+	Player = State#state.player,
+	Inv = Player#player.inventory,
+	NewSlot = case Action of
+		reduce ->
+			case array:get(SlotNo, Inv) of
+				empty -> empty;
+				{_BlockId, 1, _Metadata} -> empty;
+				{BlockId, Count, Metadata} -> {BlockId, Count-1, Metadata}
+			end;
+		{replace, Slot} -> Slot
+	end,
+	NewInv = array:set(SlotNo, NewSlot, Inv),
+	write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
+	State#state{player=Player#player{inventory=NewInv}}.
 
 % ==== Send position to everyone
 broadcast_position(Position, Eid) ->
