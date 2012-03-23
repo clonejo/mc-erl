@@ -37,6 +37,7 @@ handle_call(Req, _From, State) ->
 	
 handle_cast(Req, State) ->
 	Writer = State#state.writer,
+	PlayerEid = State#state.player#player.eid,
 	RetState = case Req of
 		% protocol reactions begin
 		login_sequence ->
@@ -50,7 +51,14 @@ handle_cast(Req, State) ->
 							{disconnect, {multiple_login, State#state.player#player.name}, State}; % different atom here?
 		
 						NewPlayer ->
-							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
+							Mode = case NewPlayer#player.mode of
+								creative -> 1;
+								survival -> 0
+							end,
+							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", Mode, 0, 0, 0, 100]}),
+							%debug:
+							NewInv = array:set(40, {3, 64, 0}, NewPlayer#player.inventory),
+							send_inventory(State#state{player=NewPlayer#player{inventory=NewInv}}),
 							write(Writer, {spawn_position, [0, 0, 0]}),
 							{X, Y, Z, Yaw, Pitch} = StartPos = State#state.pos,
 							
@@ -101,15 +109,32 @@ handle_cast(Req, State) ->
 		{packet, {disconnect, [Message]}} ->
 			{disconnect, {graceful, Message}, State};
 		
+		{packet, {holding_change, [N]}} when N >= 0 andalso N =< 8 ->
+			NewPlayer = State#state.player#player{selected_slot=N},
+			State#state{player=NewPlayer};
+		
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
-			mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
+			case State#state.player#player.mode of
+				creative -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0});
+				survival -> void
+			end,
 			State;
 		
-		{packet, {player_block_placement, [-1, -1, -1, -1, {_BlockId, 1, _Metadata}]}} ->
+		{packet, {player_digging, [2, X, Y, Z, _]}} ->
+			case State#state.player#player.mode of
+				creative -> void;
+				survival -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0})
+			end,
+			State;
+		
+		{packet, {player_block_placement, [-1, -1, -1, -1, {_BlockId, _Count, _Metadata}]}} ->
 			% handle held item state update (eating food etc.)
 			State;
+		
+		{packet, {player_block_placement, [_, _, _, _, empty]}} ->
+			State;
 			
-		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} when BlockId < 256 ->
+		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, _Count, Metadata}]}} when BlockId < 256 ->
 			case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}) of
 				ok -> ok;
 				{error, forbidden_block_id, {RX, RY, RZ}} ->
@@ -117,17 +142,16 @@ handle_cast(Req, State) ->
 			end,
 			State;
 		
+		{packet, {entity_action, [PlayerEid, _P]}} ->
+			% crouching, leaving bed, sprinting
+			State;
+		
 		{packet, {chat_message, [Message]}} ->
 			mc_erl_chat:broadcast(State#state.player, Message),
 			State;
 		
-		{packet, {animation, [Eid, AnimationId]}} ->
-			MyEid = State#state.player#player.eid,
-			if
-				MyEid == Eid ->
-					mc_erl_entity_manager:broadcast_local(MyEid, {animate, State#state.player#player.eid, AnimationId});
-				true -> ok
-			end,
+		{packet, {animation, [PlayerEid, AnimationId]}} ->
+			mc_erl_entity_manager:broadcast_local(PlayerEid, {animate, PlayerEid, AnimationId}),
 			State;
 		
 		{packet, UnknownPacket} ->
@@ -299,6 +323,10 @@ send_player_list(State) ->
 	Writer = State#state.writer,
 	Players = mc_erl_entity_manager:get_all_players(),
 	lists:foreach(fun(Player) -> write(Writer, {player_list_item, [Player#player.name, true, 1]}) end, Players).
+
+send_inventory(State) ->
+	Writer = State#state.writer,
+	write(Writer, {window_items, [0, array:to_list(State#state.player#player.inventory)]}).
 
 % ==== Send position to everyone
 broadcast_position(Position, Eid) ->
