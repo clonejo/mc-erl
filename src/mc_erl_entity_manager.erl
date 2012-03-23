@@ -67,11 +67,14 @@ handle_call({register_player, Player}, _From, State) ->
 	end;
 
 handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
-	[Player] = ets:lookup(State#state.players, Name),
-	broadcast({delete_entity, Player#player.eid}),
-	ets:delete(State#state.entities, Player#player.eid),
-	
-	{reply, ets:delete(State#state.players, Name), State};
+	case ets:lookup(State#state.players, Name) of
+		[Player] -> 
+			broadcast({delete_entity, Player#player.eid}),
+			ets:delete(State#state.entities, Player#player.eid),
+			{reply, ets:delete(State#state.players, Name), State};
+		[] ->
+			{reply, name_not_found, State}
+	end;
 
 handle_call({delete_player, Player}, _From, State) ->
 	broadcast({delete_player, Player}),
