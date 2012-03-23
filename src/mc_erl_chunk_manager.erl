@@ -69,20 +69,25 @@ loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 
 set_block({_, _, _, Direction}=C, {BlockId, Metadata}) ->
 	{X, Y, Z} = BlockCoord = undirectional_block_coord(C),
-	NewMetadata = if
-		BlockId =:= 50 orelse BlockId =:= 75 orelse BlockId =:= 76 ->
-			case Direction of
-				1 -> 5;
-				2 -> 4;
-				3 -> 3;
-				4 -> 2;
-				5 -> 1;
-				_ -> 0
-			end;
-		true -> Metadata
-	end,
-	mc_erl_entity_manager:broadcast_visible({X, Y, Z}, {block_delta, {X, Y, Z, BlockId, NewMetadata}}),
-	set_block(BlockCoord, {BlockId, NewMetadata});
+	case mc_erl_blocks:can_build(BlockId) of
+		true ->
+			NewMetadata = if
+				BlockId =:= 50 orelse BlockId =:= 75 orelse BlockId =:= 76 ->
+					case Direction of
+						1 -> 5;
+						2 -> 4;
+						3 -> 3;
+						4 -> 2;
+						5 -> 1;
+						_ -> 0
+					end;
+				true -> Metadata
+			end,
+			mc_erl_entity_manager:broadcast_visible({X, Y, Z}, {block_delta, {X, Y, Z, BlockId, NewMetadata}}),
+			set_block(BlockCoord, {BlockId, NewMetadata});
+		false ->
+			{error, forbidden_block_id, BlockCoord}
+	end;
 
 set_block({_, _, _}=BlockCoord, {_, _}=BlockData) ->
 	gen_server:cast(?MODULE, {set_block, BlockCoord, BlockData}).

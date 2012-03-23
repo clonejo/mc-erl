@@ -106,7 +106,11 @@ handle_cast(Req, State) ->
 			State;
 			
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} when BlockId < 256 ->
-			mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
+			case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}) of
+				ok -> ok;
+				{error, forbidden_block_id, {RX, RY, RZ}} ->
+					write(Writer, {block_change, [RX, RY, RZ, 0, 0]})
+			end,
 			State;
 		
 		{packet, {chat_message, [Message]}} ->
