@@ -40,22 +40,30 @@ handle_cast(Req, State) ->
 	RetState = case Req of
 		% protocol reactions begin
 		login_sequence ->
-			case mc_erl_entity_manager:register_player(State#state.player) of
-				{error, name_in_use} ->
-					io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
-					write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
-					{disconnect, "same name logged in", State}; % different atom here?
-
-				NewPlayer ->
-					write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
-					write(Writer, {spawn_position, [0, 0, 0]}),
-					{X, Y, Z, Yaw, Pitch} = State#state.pos,
-					
-					Chunks = check_chunks(Writer, {X, Y, Z}),
-					
-					write(Writer, {player_position_look, [X,Y+1.62,Y,Z,Yaw,Pitch,1]}),
-					mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-					State#state{chunks=Chunks, player=NewPlayer}
+			IsValid = mc_erl_chat:is_valid_nickname(State#state.player#player.name),
+			case IsValid of
+				true ->	
+					case mc_erl_entity_manager:register_player(State#state.player) of
+						{error, name_in_use} ->
+							io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
+							write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
+							{disconnect, "same name logged in", State}; % different atom here?
+		
+						NewPlayer ->
+							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
+							write(Writer, {spawn_position, [0, 0, 0]}),
+							{X, Y, Z, Yaw, Pitch} = State#state.pos,
+							
+							Chunks = check_chunks(Writer, {X, Y, Z}),
+							
+							write(Writer, {player_position_look, [X,Y+1.62,Y,Z,Yaw,Pitch,1]}),
+							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
+							State#state{chunks=Chunks, player=NewPlayer}
+					end;
+				false ->
+					io:format("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
+					write(Writer, {disconnect, ["Invalid username :("]}),
+					{disconnect, "invalid username", State}
 			end;
 			
 		{packet, {keep_alive, [_]}} ->
