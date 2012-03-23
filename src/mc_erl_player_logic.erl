@@ -52,11 +52,15 @@ handle_cast(Req, State) ->
 						NewPlayer ->
 							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", 1, 0, 0, 0, 100]}),
 							write(Writer, {spawn_position, [0, 0, 0]}),
-							{X, Y, Z, Yaw, Pitch} = State#state.pos,
+							{X, Y, Z, Yaw, Pitch} = StartPos = State#state.pos,
 							
 							Chunks = check_chunks(Writer, {X, Y, Z}),
 							
+							send_player_list(State),							
 							write(Writer, {player_position_look, [X,Y+1.62,Y,Z,Yaw,Pitch,1]}),
+							
+							broadcast_position(StartPos, NewPlayer#player.eid),
+							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
 							State#state{chunks=Chunks, player=NewPlayer}
 					end;
@@ -75,7 +79,7 @@ handle_cast(Req, State) ->
 		{packet, {player_position, [X, Y, _Stance, Z, _OnGround]}} ->
 			{_OldX, _OldY, _OldZ, Yaw, Pitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
-			broadcast_position(NewPos, State),
+			broadcast_position(NewPos, State#state.player#player.eid),
 			
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			NewState;
@@ -83,12 +87,12 @@ handle_cast(Req, State) ->
 		{packet, {player_look, [Yaw, Pitch, _OnGround]}} ->
 			{X, Y, Z, _OldYaw, _OldPitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
-			broadcast_position(NewPos, State),
+			broadcast_position(NewPos, State#state.player#player.eid),
 			State;
 			
 		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]}} ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
-			broadcast_position(NewPos, State),
+			broadcast_position(NewPos, State#state.player#player.eid),
 			
 			%io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
@@ -143,6 +147,15 @@ handle_cast(Req, State) ->
 			end,
 			State;
 		
+		{new_player, Player} ->
+			write(Writer, {player_list_item, [Player#player.name, true, 1]}),
+			State;
+		
+		{delete_player, Player} ->
+			write(Writer, {player_list_item, [Player#player.name, false, 1]}),
+			NewState = delete_entity(Player#player.eid, State),
+			NewState;
+		
 		{delete_entity, Eid} ->
 			NewState = delete_entity(Eid, State),
 			NewState;
@@ -178,8 +191,7 @@ precise_positions(State) ->
 			in_range({X, Y, Z}, State) and (MyEid /= P#entity_data.eid)
 		end, Entities)).
 
-update_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
-	Writer = State#state.writer,
+update_entity(Eid, {X, Y, Z, _Yaw, _Pitch}=NewLocation, State) ->
 	if
 		Eid == State#state.player#player.eid ->
 			State;
@@ -191,42 +203,49 @@ update_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 				end;
 			true ->
 				case dict:is_key(Eid, State#state.known_entities) of
-					true ->
-						{OldX, OldY, OldZ, _OldYaw, _OldPitch, Data} = dict:fetch(Eid, State#state.known_entities),
-						DX = X - OldX,
-						DY = Y - OldY,
-						DZ = Z - OldZ,
-						DDistance = lists:max([DX, DY, DZ]),
-						FracYaw = trunc(Yaw*256/360),
-						FracPitch = trunc(Pitch*256/360),
-						
-						ChangePackets = if
-							DDistance >= 4 ->
-								[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
-							true ->
-								[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
-								 {entity_head_look, [Eid, FracYaw]}]
-						end,
-						NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
-						lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
-						State#state{known_entities=NewKnownEntities};
-					false ->
-						EntityData = mc_erl_entity_manager:entity_details(Eid),
-						if
-							EntityData#entity_data.type == player ->
-								PName = EntityData#entity_data.metadata#player_metadata.name,
-								PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
-								write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
-								NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
-								State#state{known_entities=NewKnownEntities};
-							true ->
-								State
-						end
+					true -> move_known_entity(Eid, NewLocation, State);
+					false -> spawn_new_entity(Eid, NewLocation, State)
 				end
 		end
 	end.
 
 write(Writer, Packet) -> Writer ! {packet, Packet}.
+
+
+move_known_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
+	Writer = State#state.writer,
+	{OldX, OldY, OldZ, _OldYaw, _OldPitch, Data} = dict:fetch(Eid, State#state.known_entities),
+	DX = X - OldX,
+	DY = Y - OldY,
+	DZ = Z - OldZ,
+	DDistance = lists:max([DX, DY, DZ]),
+	FracYaw = trunc(Yaw*256/360),
+	FracPitch = trunc(Pitch*256/360),
+	
+	ChangePackets = if
+		DDistance >= 4 ->
+			[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
+		true ->
+			[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
+			 {entity_head_look, [Eid, FracYaw]}]
+	end,
+	NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
+	lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
+	State#state{known_entities=NewKnownEntities}.
+
+spawn_new_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
+	Writer = State#state.writer,
+	EntityData = mc_erl_entity_manager:entity_details(Eid),
+	if
+		EntityData#entity_data.type == player ->
+			PName = EntityData#entity_data.metadata#player_metadata.name,
+			PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
+			write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
+			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
+			State#state{known_entities=NewKnownEntities};
+		true ->
+			State
+	end.
 
 delete_entity(Eid, State) ->
 	case dict:is_key(Eid, State#state.known_entities) of
@@ -238,9 +257,13 @@ delete_entity(Eid, State) ->
 			State
 	end.
 
+send_player_list(State) ->
+	Writer = State#state.writer,
+	Players = mc_erl_entity_manager:get_all_players(),
+	lists:foreach(fun(Player) -> write(Writer, {player_list_item, [Player#player.name, true, 1]}) end, Players).
+
 % ==== Send position to everyone
-broadcast_position(Position, State) ->
-	Eid = State#state.player#player.eid,
+broadcast_position(Position, Eid) ->
 	mc_erl_entity_manager:broadcast_local(Eid, {update_entity_position, {Eid, Position}}).
 
 % ==== Checks if location is in visible range

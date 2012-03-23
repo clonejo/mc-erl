@@ -62,6 +62,7 @@ handle_call({register_player, Player}, _From, State) ->
 		false -> {reply, {error, name_in_use}, State};
 		true ->
 			ets:insert_new(State#state.entities, #entity_data{eid=Eid, type=player, metadata=#player_metadata{name=NewPlayer#player.name, holding_item=0}}),
+			broadcast({new_player, Player}),
 			{reply, NewPlayer, State#state{next_eid=Eid+1}}
 	end;
 
@@ -73,7 +74,7 @@ handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
 	{reply, ets:delete(State#state.players, Name), State};
 
 handle_call({delete_player, Player}, _From, State) ->
-	broadcast({delete_entity, Player#player.eid}),
+	broadcast({delete_player, Player}),
 	ets:delete(State#state.entities, Player#player.eid),
 	{reply, ets:delete(State#state.players, Player#player.name), State};
 
