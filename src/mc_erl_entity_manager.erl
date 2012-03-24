@@ -52,8 +52,8 @@ broadcast_visible({_X, _Y, _Z}, Message) -> % a placeholder for a ranged event
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
 	%Entities = ets:new(entities, [set, private]),
-	{ok, #state{players=ets:new(players, [set, private, {keypos, 3}]),
-		entities=ets:new(entities, [set, private, {keypos, 2}])}}.
+	{ok, #state{players=ets:new(players, [set, public, {keypos, 3}]),
+		entities=ets:new(entities, [set, public, {keypos, 2}])}}.
 
 handle_call({register_player, Player}, _From, State) ->
 	Eid = State#state.next_eid,

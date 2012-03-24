@@ -3,7 +3,7 @@
 -export([start_logic/2, packet/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {writer, player, mode=creative, chunks=none, 
+-record(state, {writer, player, mode=creative, chunks=none, cursor_item=empty,
                 known_entities=dict:new(), last_tick, pos={0.5, 70, 0.5, 0, 0}}).%pos = {X, Y, Z, Yaw, Pitch}
 
 -record(ke_metadata, {relocations=0}).
@@ -169,6 +169,134 @@ handle_cast(Req, State) ->
 			mc_erl_entity_manager:broadcast_local(PlayerEid, {animate, PlayerEid, AnimationId}),
 			State;
 		
+		{packet, {window_click, [0, Slot, 0, TransactionId, false, _Item]}} -> % player inventory without right-cl and shift
+			if
+				Slot /= -999 ->
+					case State#state.cursor_item of
+						empty ->
+							Holding = get_slot(State, Slot),
+							NewState = update_slot(State, Slot, empty),
+							write(Writer, {transaction, [0, TransactionId, true]}),
+							NewState#state{cursor_item=Holding};
+							
+						{BlockId, Count, BlockMetadata} ->
+							SlotBelow = get_slot(State, Slot),
+							case SlotBelow of
+								empty ->
+									NewState = update_slot(State, Slot, {replace, State#state.cursor_item}),
+									write(Writer, {transaction, [0, TransactionId, true]}),
+									NewState#state{cursor_item=empty};
+									
+								{BelowId, BelowCount, BelowMetadata} ->
+									if
+										(BelowId == BlockId) andalso (BelowMetadata == BlockMetadata) ->
+											if
+												Count+BelowCount > 64 ->
+													NewBelowCount = 64,
+													NewHoldingCount = Count + BelowCount - 64,
+													write(Writer, {transaction, [0, TransactionId, true]}),
+													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata}}),
+													NewState#state{cursor_item={BlockId, NewHoldingCount, BlockMetadata}};
+												true ->
+													NewBelowCount = Count + BelowCount,
+													write(Writer, {transaction, [0, TransactionId, true]}),
+													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata}}),
+													NewState#state{cursor_item=empty}
+											end;
+										
+										true ->
+											write(Writer, {transaction, [0, TransactionId, false]}),
+											State
+									end
+							end
+					end;
+				
+				true ->
+					case State#state.cursor_item of
+						empty -> State;
+						{_BlockId, _Count, _BlockMetadata} ->
+							%todo: spawn dropped item
+							State#state{cursor_item=empty}
+					end
+			end;
+		
+		{packet, {window_click, [0, Slot, 1, TransactionId, false, _Item]}} -> % right click without shift
+			if
+				Slot /= -999 ->
+					case State#state.cursor_item of
+						empty ->
+							CSlot = get_slot(State, Slot),
+							case CSlot of
+								empty -> State;
+								{HoldingId, AllCount, HoldingMetadata} ->
+									HoldingCount = trunc((AllCount+1)/2),
+									LeftCount = trunc(AllCount/2),
+									LeftItem = if
+										LeftCount == 0 -> empty;
+										true -> {HoldingId, LeftCount, HoldingMetadata}
+									end,
+									NewState = update_slot(State, Slot, {replace, LeftItem}),
+									Holding = {HoldingId, HoldingCount, HoldingMetadata},
+									write(Writer, {transaction, [0, TransactionId, true]}),
+									NewState#state{cursor_item=Holding}
+							end;
+									
+							
+						{BlockId, Count, BlockMetadata} ->
+							SlotBelow = get_slot(State, Slot),
+							case SlotBelow of
+								empty ->
+									NewCursorCount = Count - 1,
+									NewState = update_slot(State, Slot, {replace, {BlockId, 1, BlockMetadata}}),
+									write(Writer, {transaction, [0, TransactionId, true]}),
+									if
+										NewCursorCount == 0 -> NewCItem = empty;
+										true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata}
+									end,
+									NewState#state{cursor_item=NewCItem};
+									
+								{BelowId, BelowCount, BelowMetadata} ->
+									if
+										(BelowId == BlockId) andalso (BelowMetadata == BlockMetadata) ->
+											if
+												BelowCount+1 > 64 ->
+													write(Writer, {transaction, [0, TransactionId, false]}),
+													State;
+												true ->
+													NewCursorCount = Count - 1,
+													if
+														NewCursorCount == 0 -> NewCItem = empty;
+														true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata}
+													end,
+													NewBelowCount = BelowCount + 1,
+													write(Writer, {transaction, [0, TransactionId, true]}),
+													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata}}),
+													NewState#state{cursor_item=NewCItem}
+											end;
+										
+										true ->
+											write(Writer, {transaction, [0, TransactionId, false]}),
+											State
+									end
+							end
+					end;
+				
+				true ->
+					case State#state.cursor_item of
+						empty -> State;
+						{BlockId, Count, BlockMetadata} ->
+							%todo: spawn dropped item
+							if
+								(Count - 1) == 0 -> State#state{cursor_item=empty};
+								true -> State#state{cursor_item={BlockId, Count - 1, BlockMetadata}}
+							end
+					end
+			end;
+		
+		{packet, {window_click, [_, _, _, TransactionId, _, _]}} ->
+			write(Writer, {transaction, [0, TransactionId, false]}),
+			State;	
+		
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
 			State;
@@ -188,7 +316,6 @@ handle_cast(Req, State) ->
 			
 		{tick, Tick} ->
 			if
-				% (Tick rem 20) == 0 -> precise_positions(State);
 				true -> ok
 			end,
 			FinalState = State#state{last_tick=Tick},
@@ -255,22 +382,6 @@ handle_cast(Req, State) ->
 		% right path
 		Res -> {noreply, Res}
 	end.
-
-% ==== update entity location
-precise_positions(State) ->
-	Writer = State#state.writer,
-	MyEid = State#state.player#player.eid,
-	Entities = mc_erl_entity_manager:get_all_entities(),
-	lists:foreach(fun(Entity) ->
-			Eid = Entity#entity_data.eid,
-			{X, Y, Z, Yaw, Pitch} = Entity#entity_data.location,
-			FracYaw = trunc(Yaw*256/360),
-			FracPitch = trunc(Pitch*256/360),
-			write(Writer, {entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]})			
-		end, lists:filter(fun(P) -> 
-			{X, Y, Z, _Yaw, _Pitch} = P#entity_data.location,
-			in_range({X, Y, Z}, State) and (MyEid /= P#entity_data.eid)
-		end, Entities)).
 
 update_entity(Eid, {X, Y, Z, _Yaw, _Pitch}=NewLocation, State) ->
 	if
@@ -349,12 +460,14 @@ send_inventory(State) ->
 	Writer = State#state.writer,
 	write(Writer, {window_items, [0, array:to_list(State#state.player#player.inventory)]}).
 
-%% action = reduce | {replace, Slot}
+%% action = reduce | {replace, Slot} | empty
 update_slot(State, SlotNo, Action) ->
 	Writer = State#state.writer,
 	Player = State#state.player,
 	Inv = Player#player.inventory,
 	NewSlot = case Action of
+		empty ->
+			empty;
 		reduce ->
 			case array:get(SlotNo, Inv) of
 				empty -> empty;
@@ -366,6 +479,8 @@ update_slot(State, SlotNo, Action) ->
 	NewInv = array:set(SlotNo, NewSlot, Inv),
 	write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
 	State#state{player=Player#player{inventory=NewInv}}.
+
+get_slot(State, SlotNo) -> array:get(SlotNo, State#state.player#player.inventory).
 
 % ==== Send position to everyone
 broadcast_position(Position, Eid) ->
