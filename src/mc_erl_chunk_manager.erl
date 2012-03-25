@@ -1,7 +1,7 @@
 -module(mc_erl_chunk_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2,
+-export([start_link/0, stop/0, clear_map/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2,
          loaded_chunks/0, undirectional_block_coord/1, tick/1]).
 
 -include("records.hrl").
@@ -68,6 +68,8 @@ loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 tick(Time) ->
 	gen_server:cast(?MODULE, {tick, Time}).
 
+clear_map() -> gen_server:cast(?MODULE, clear_map).
+
 %get_compressed_chunk(...
 
 set_block({_, _, _, Direction}=C, {BlockId, Metadata}) ->
@@ -120,6 +122,10 @@ handle_call(Message, _From, State) ->
 	end.
 
 
+handle_cast(clear_map, Chunks) ->
+	ets:delete(Chunks),
+	{noreply, ets:new(chunks, [set, public])};
+
 handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 	Column = asynchronous_get_chunk(coord_to_chunk(Coord), Chunks),
 	Chunk = case proplists:get_value(Y div 16, Column#chunk_column_data.chunks) of
@@ -155,7 +161,7 @@ handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 	ets:insert(Chunks, {coord_to_chunk(Coord), NewColumn}),
 	{noreply, Chunks};
 
-handle_cast({tick, Time}, Chunks) ->
+handle_cast({tick, _Time}, Chunks) ->
 	{noreply, Chunks};
 
 handle_cast(stop, State) ->

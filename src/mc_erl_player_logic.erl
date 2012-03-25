@@ -3,7 +3,7 @@
 -export([start_logic/2, packet/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {writer, player, mode=creative, chunks=none, cursor_item=empty,
+-record(state, {writer, player, mode=creative, chunks=none, cursor_item=empty, logged_in=false,
                 known_entities=dict:new(), last_tick, pos={0.5, 70, 0.5, 0, 0}}).%pos = {X, Y, Z, Yaw, Pitch}
 
 -record(ke_metadata, {relocations=0}).
@@ -22,8 +22,12 @@ init([Writer, Name]) ->
 
 terminate(_Reason, State) ->
 	State#state.writer ! stop,
-	mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
-	mc_erl_entity_manager:delete_player(State#state.player),
+	case State#state.logged_in of
+		true ->
+			mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
+			mc_erl_entity_manager:delete_player(State#state.player);
+		false -> ok
+	end,
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -73,7 +77,7 @@ handle_cast(Req, State) ->
 							broadcast_position(StartPos, NewPlayer#player.eid),
 							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-							NewState#state{chunks=Chunks}
+							NewState#state{chunks=Chunks, player=NewPlayer, logged_in=true}
 					end;
 				false ->
 					io:format("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
@@ -108,6 +112,9 @@ handle_cast(Req, State) ->
 			%io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			NewState;
+		
+		{packet, net_disconnect} ->
+			{disconnect, {graceful, "Lost connection"}, State};
 			
 		{packet, {disconnect, [Message]}} ->
 			{disconnect, {graceful, Message}, State};
