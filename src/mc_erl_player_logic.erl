@@ -92,13 +92,11 @@ handle_cast(Req, State) ->
 			{X, Y, Z, _OldYaw, _OldPitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, State#state.player#player.eid),
-			State;
+			State#state{pos=NewPos};
 			
 		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]}} ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, State#state.player#player.eid),
-			
-			%io:format("pos upd: ~p~n", [Position]),
 			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
 			NewState;
 		
@@ -117,7 +115,7 @@ handle_cast(Req, State) ->
 			State;
 			
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, 1, Metadata}]}} when BlockId < 256 ->
-			case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}) of
+			case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos) of
 				ok -> ok;
 				{error, forbidden_block_id, {RX, RY, RZ}} ->
 					write(Writer, {block_change, [RX, RY, RZ, 0, 0]})

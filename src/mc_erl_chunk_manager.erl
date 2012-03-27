@@ -1,8 +1,8 @@
 -module(mc_erl_chunk_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, clear_map/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1, set_block/2,
-         loaded_chunks/0, undirectional_block_coord/1]).
+-export([start_link/0, stop/0, clear_map/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1,
+         set_block/2, set_block/3, loaded_chunks/0, undirectional_block_coord/1]).
 
 -include("records.hrl").
 
@@ -69,7 +69,25 @@ clear_map() -> gen_server:cast(?MODULE, clear_map).
 
 %get_compressed_chunk(...
 
-set_block({_, _, _, Direction}=C, {BlockId, Metadata}) ->
+orientation(Yaw) ->
+	Sin = math:sin((Yaw+45)/360*2*math:pi()),
+	Cos = math:cos((Yaw+45)/360*2*math:pi()),
+	if Sin =< 0 ->
+		if Cos =< 0 ->
+			north;
+		true ->
+			east
+		end;
+	true ->
+		if Cos =< 0 ->
+			west;
+		true ->
+			south
+		end
+	end.
+			
+
+set_block({_, _, _, Direction}=C, {BlockId, Metadata}, {_, _, _, Yaw, _}) ->
 	{X, Y, Z} = BlockCoord = undirectional_block_coord(C),
 	case mc_erl_blocks:can_build(BlockId) of
 		true ->
@@ -83,13 +101,22 @@ set_block({_, _, _, Direction}=C, {BlockId, Metadata}) ->
 						5 -> 1;
 						_ -> 0
 					end;
+				BlockId =:= 53 orelse BlockId =:= 67 orelse BlockId =:= 67
+				               orelse BlockId =:= 108 orelse BlockId =:= 109
+				               orelse BlockId =:= 114 ->
+					case orientation(Yaw) of
+						east -> 0;
+						west -> 1;
+						south -> 2;
+						north -> 3
+					end;
 				true -> Metadata
 			end,
 			mc_erl_entity_manager:broadcast_visible({X, Y, Z}, {block_delta, {X, Y, Z, BlockId, NewMetadata}}),
 			set_block(BlockCoord, {BlockId, NewMetadata});
 		false ->
 			{error, forbidden_block_id, BlockCoord}
-	end;
+	end.
 
 set_block({X, Y, Z}=BlockCoord, {BlockId, Metadata}=BlockData) ->
 	mc_erl_entity_manager:broadcast_visible(BlockCoord, {block_delta, {X, Y, Z, BlockId, Metadata}}),
