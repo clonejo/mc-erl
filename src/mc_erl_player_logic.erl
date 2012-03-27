@@ -77,7 +77,7 @@ handle_cast(Req, State) ->
 							broadcast_position(StartPos, NewPlayer#player.eid),
 							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-							NewState#state{chunks=Chunks, player=NewPlayer, logged_in=true}
+							NewState#state{chunks=Chunks, logged_in=true}
 					end;
 				false ->
 					io:format("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
@@ -103,15 +103,12 @@ handle_cast(Req, State) ->
 			{X, Y, Z, _OldYaw, _OldPitch} = State#state.pos,
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, MyPlayer#player.eid),
-			State;
+			State#state{pos=NewPos};
 			
 		{packet, {player_position_look, [X, Y, _Stance, Z, Yaw, Pitch, _OnGround]}} ->
 			NewPos = {X, Y, Z, Yaw, Pitch},
 			broadcast_position(NewPos, MyPlayer#player.eid),
-			
-			%io:format("pos upd: ~p~n", [Position]),
-			NewState = State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos},
-			NewState;
+			State#state{chunks=check_chunks(State#state.writer, {X, Y, Z}, State#state.chunks), pos=NewPos};
 		
 		{packet, net_disconnect} ->
 			{disconnect, {graceful, "Lost connection"}, State};
@@ -119,7 +116,7 @@ handle_cast(Req, State) ->
 		{packet, {disconnect, [Message]}} ->
 			{disconnect, {graceful, Message}, State};
 		
-		{packet, {holding_change, [N]}} when N >= 0 andalso N =< 8 ->
+		{packet, {holding_change, [N]}} when N >= 0, N =< 8 ->
 			NewPlayer = MyPlayer#player{selected_slot=N},
 			State#state{player=NewPlayer};
 		
@@ -147,7 +144,7 @@ handle_cast(Req, State) ->
 		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, _Count, Metadata}]}} when BlockId < 256 ->
 			case MyPlayer#player.mode of
 				creative ->
-					case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}) of
+					case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos) of
 						ok -> ok;
 						{error, forbidden_block_id, {RX, RY, RZ}} ->
 							write(Writer, {block_change, [RX, RY, RZ, 0, 0]})
@@ -158,7 +155,7 @@ handle_cast(Req, State) ->
 					Inv = MyPlayer#player.inventory,
 					case array:get(SelectedSlot, Inv) of
 						{BlockId, _, Metadata} ->
-							mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}),
+							mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos),
 							update_slot(State, SelectedSlot, reduce);
 						_ -> {disconnect, {cheating, wrong_slot}, State}
 					end
