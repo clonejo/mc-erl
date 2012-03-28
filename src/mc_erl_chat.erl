@@ -4,6 +4,8 @@
 
 -include("records.hrl").
 
+-define(ALLOWED_CHARS, " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»").
+
 broadcast(Player, Message) ->
 	broadcast(Player#player.name ++ ": " ++ Message).
 
@@ -31,7 +33,7 @@ is_valid_nickname(Nickname) ->
 		((X >= $0) and (X =< $9)) or (X == $-) or (X == $_) end, Nickname).
 
 filter_message(Message) ->
-	lists:filter(fun(X) -> X /= 16#A7 end, Message).
+	lists:filter(fun(X) -> lists:member(X, ?ALLOWED_CHARS) end, Message).
 
 split_message(Message) ->
 	split_message(Message, []).
