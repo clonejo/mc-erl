@@ -116,6 +116,13 @@ set_block({_, _, _, Direction}=C, {BlockId, Metadata}, {_, _, _, Yaw, _}) ->
 							north -> 3
 						end):2>>,
 					M;
+				BlockId =:= 23 orelse BlockId =:= 54 orelse BlockId =:= 61 orelse BlockId =:= 65 ->
+					case orientation(Yaw) of
+						south -> 2;
+						north -> 3;
+						east -> 4;
+						west -> 5
+					end;
 				true -> Metadata
 			end,
 			mc_erl_entity_manager:broadcast_visible({X, Y, Z}, {block_delta, {X, Y, Z, BlockId, NewMetadata}}),
