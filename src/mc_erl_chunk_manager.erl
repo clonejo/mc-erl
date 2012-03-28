@@ -46,8 +46,7 @@ chunks_in_range({_, _, _}=Pos, Range) ->
 	chunks_in_range(coord_to_chunk(Pos), Range);
 chunks_in_range({CX, CZ}, Range) ->
 	sets:from_list(lists:flatten(
-		[[{X, Z} || X<-lists:seq(CX-Range, CX+Range)]||
-			Z<-lists:seq(CZ-Range, CZ+Range)])).
+		[{X, Z} || X<-lists:seq(CX-Range, CX+Range), Z<-lists:seq(CZ-Range, CZ+Range)])).
 
 asynchronous_get_chunk(ChunkCoord, Chunks) ->
 	case ets:lookup(Chunks, ChunkCoord) of
