@@ -41,6 +41,8 @@ handle_call(Req, _From, State) ->
 	
 handle_cast(Req, State) ->
 	Writer = State#state.writer,
+	MyPlayer = State#state.player,
+	MyEid = MyPlayer#player.eid,
 	RetState = case Req of
 		% protocol reactions begin
 		login_sequence ->
@@ -134,6 +136,13 @@ handle_cast(Req, State) ->
 					mc_erl_entity_manager:broadcast_local(MyEid, {animate, State#state.player#player.eid, AnimationId});
 				true -> ok
 			end,
+			State;
+		
+		{packet, {entity_action, [MyEid, _N]}} ->
+			% broadcast crouching/not crouching to other players
+			State;
+		
+		{packet, {player_abilities, [_, _Flying, _, _]}} ->
 			State;
 		
 		{packet, UnknownPacket} ->
