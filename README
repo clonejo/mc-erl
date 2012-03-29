@@ -17,4 +17,4 @@ Full stops are required.
 The proxy will be available at 127.0.0.1:25566 and it proxies to 127.0.0.1:25565.
 Be aware the log files can get quite big (some 100MB).
 
-The server also runs at port 25566 and cannot be run simultaneously with proxy server.
+The server runs at port 25565 (default) and can be run simultaneously with proxy server. The port and other options can be set in "server.conf".

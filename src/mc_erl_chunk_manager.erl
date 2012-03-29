@@ -46,8 +46,7 @@ chunks_in_range({_, _, _}=Pos, Range) ->
 	chunks_in_range(coord_to_chunk(Pos), Range);
 chunks_in_range({CX, CZ}, Range) ->
 	sets:from_list(lists:flatten(
-		[[{X, Z} || X<-lists:seq(CX-Range, CX+Range)]||
-			Z<-lists:seq(CZ-Range, CZ+Range)])).
+		[{X, Z} || X<-lists:seq(CX-Range, CX+Range), Z<-lists:seq(CZ-Range, CZ+Range)])).
 
 asynchronous_get_chunk(ChunkCoord, Chunks) ->
 	case ets:lookup(Chunks, ChunkCoord) of
@@ -107,11 +106,24 @@ set_block({_, _, _, Direction}=C, {BlockId, Metadata}, {_, _, _, Yaw, _}) ->
 				BlockId =:= 53 orelse BlockId =:= 67 orelse BlockId =:= 67
 				               orelse BlockId =:= 108 orelse BlockId =:= 109
 				               orelse BlockId =:= 114 ->
+					<<M>> = <<0:5,
+						(case Direction of
+							0 -> 1;
+							_ -> 0
+						end):1,
+						(case orientation(Yaw) of
+							east -> 0;
+							west -> 1;
+							south -> 2;
+							north -> 3
+						end):2>>,
+					M;
+				BlockId =:= 23 orelse BlockId =:= 54 orelse BlockId =:= 61 orelse BlockId =:= 65 ->
 					case orientation(Yaw) of
-						east -> 0;
-						west -> 1;
 						south -> 2;
-						north -> 3
+						north -> 3;
+						east -> 4;
+						west -> 5
 					end;
 				true -> Metadata
 			end,
