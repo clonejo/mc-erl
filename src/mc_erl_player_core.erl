@@ -10,7 +10,7 @@ read(Socket) ->
 	case Packet of
 		{server_list_ping, [] } ->
 			io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
-			send(Socket, {disconnect,[lists:flatten(["a ...err... lang server!",167,"0",167,"100"])]});
+			send(Socket, {disconnect,[lists:flatten([mc_erl_config:get(description),167,"0",167,"100"])]});
 			%gen_tcp:close(Socket);
 
 		{handshake, [S]} ->
