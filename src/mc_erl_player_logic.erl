@@ -44,7 +44,7 @@ handle_call(Req, _From, State) ->
 handle_cast(Req, State) ->
 	Writer = State#state.writer,
 	MyPlayer = State#state.player,
-	PlayerEid = MyPlayer#player.eid,
+	MyEid = MyPlayer#player.eid,
 	RetState = case Req of
 		% protocol reactions begin
 		login_sequence ->
@@ -162,7 +162,7 @@ handle_cast(Req, State) ->
 					end
 			end;
 		
-		{packet, {entity_action, [PlayerEid, _P]}} ->
+		{packet, {entity_action, [MyEid, _P]}} ->
 			% crouching, leaving bed, sprinting
 			State;
 		
@@ -170,8 +170,15 @@ handle_cast(Req, State) ->
 			mc_erl_chat:broadcast(State#state.player, Message),
 			State;
 		
-		{packet, {animation, [PlayerEid, AnimationId]}} ->
-			mc_erl_entity_manager:broadcast_local(PlayerEid, {animate, PlayerEid, AnimationId}),
+		{packet, {animation, [MyEid, AnimationId]}} ->
+			mc_erl_entity_manager:broadcast_local(MyEid, {animate, MyEid, AnimationId}),
+			State;
+		
+		{packet, {entity_action, [MyEid, _N]}} ->
+			% broadcast crouching/not crouching to other players
+			State;
+		
+		{packet, {player_abilities, [_, _Flying, _, _]}} ->
 			State;
 		
 		{packet, {window_click, [0, Slot, 0, TransactionId, false, _Item]}} -> % player inventory without right-cl and shift
@@ -300,7 +307,7 @@ handle_cast(Req, State) ->
 		
 		{packet, {window_click, [_, _, _, TransactionId, _, _]}} ->
 			write(Writer, {transaction, [0, TransactionId, false]}),
-			State;	
+			State;
 		
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
