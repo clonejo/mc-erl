@@ -9,7 +9,7 @@ read(Socket) ->
 	{ok, Packet} = mc_erl_protocol:decode_packet(Socket),
 	case Packet of
 		{server_list_ping, [] } ->
-			io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
+			%io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
 			send(Socket, {disconnect,[lists:flatten([mc_erl_config:get(description),167,"0",167,"100"])]});
 			%gen_tcp:close(Socket);
 
