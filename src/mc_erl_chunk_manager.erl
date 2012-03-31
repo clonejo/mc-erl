@@ -1,13 +1,21 @@
 -module(mc_erl_chunk_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, clear_map/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1,
+-export([setup/0, start_link/0, stop/0, clear_map/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1,
          set_block/2, set_block/3, loaded_chunks/0, undirectional_block_coord/1]).
 
 -include("records.hrl").
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+
+%% used for mnesia table
+-record(column, {pos, data}).
+
+%% set up mnesia table
+setup() ->
+	mnesia:create_table(column, [{attributes, record_info(fields, column)},
+	                             {type, set}, {disc_copies, [node()]}]).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -48,13 +56,15 @@ chunks_in_range({CX, CZ}, Range) ->
 	sets:from_list(lists:flatten(
 		[{X, Z} || X<-lists:seq(CX-Range, CX+Range), Z<-lists:seq(CZ-Range, CZ+Range)])).
 
-asynchronous_get_chunk(ChunkCoord, Chunks) ->
-	case ets:lookup(Chunks, ChunkCoord) of
+asynchronous_get_chunk(ChunkCoord) ->
+	Q = fun() -> mnesia:read(column, ChunkCoord) end,
+	{atomic, R} = mnesia:transaction(Q),
+	case R of
 		[] ->
 			C = mc_erl_chunk_generator:gen_column(ChunkCoord),
-			ets:insert(Chunks, {ChunkCoord, C}),
+			write_column(ChunkCoord, C),
 			C;
-		[{ChunkCoord, C}] -> C
+		[{column, ChunkCoord, C}] -> C
 	end.
 			
 get_chunk({_, _, _}=Pos) ->
@@ -134,21 +144,24 @@ set_block({X, Y, Z}=BlockCoord, {BlockId, Metadata}=BlockData) ->
 	mc_erl_entity_manager:broadcast_visible(BlockCoord, {block_delta, {X, Y, Z, BlockId, Metadata}}),
 	gen_server:cast(?MODULE, {set_block, BlockCoord, BlockData}).
 
+write_column(Coord, ColumnData) ->
+	F = fun() -> mnesia:write(#column{pos=Coord, data=ColumnData}) end,
+	{atomic, ok} = mnesia:transaction(F).
+
 % gen_server callbacks
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
-	Chunks = ets:new(chunks, [set, public]),
-	{ok, Chunks}.
+	{ok, void}.
 
 handle_call({get_chunk, ChunkCoord}, From, Chunks) ->
 	proc_lib:spawn_link(fun() ->
-		Chunk = asynchronous_get_chunk(ChunkCoord, Chunks),
+		Chunk = asynchronous_get_chunk(ChunkCoord),
 		gen_server:reply(From, Chunk)
 		end),
 	{noreply, Chunks};
 
 handle_call(loaded_chunks, _From, Chunks) ->
-	{reply, ets:info(Chunks, size), Chunks};
+	{reply, mnesia:table_info(column, size), Chunks};
 
 handle_call(Message, _From, State) ->
 	case Message of
@@ -158,12 +171,13 @@ handle_call(Message, _From, State) ->
 	end.
 
 
-handle_cast(clear_map, Chunks) ->
-	ets:delete(Chunks),
-	{noreply, ets:new(chunks, [set, public])};
+handle_cast(clear_map, State) ->
+	F = fun() -> mnesia:clear_table(column) end,
+	{atomic, ok} = mnesia:transaction(F),
+	{noreply, State};
 
 handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
-	Column = asynchronous_get_chunk(coord_to_chunk(Coord), Chunks),
+	Column = asynchronous_get_chunk(coord_to_chunk(Coord)),
 	Chunk = case proplists:get_value(Y div 16, Column#chunk_column_data.chunks) of
 		undefined -> #chunk_data{types=binary:copy(<<0>>,16*16*16),
 	                             metadata=binary:copy(<<0>>,16*16*8),
@@ -194,7 +208,7 @@ handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
 		chunks=lists:keystore(Y div 16, 1, Column#chunk_column_data.chunks,
 		                     {Y div 16, NewChunk})},
 	
-	ets:insert(Chunks, {coord_to_chunk(Coord), NewColumn}),
+	write_column(coord_to_chunk(Coord), NewColumn),
 	{noreply, Chunks};
 
 handle_cast(stop, State) ->
