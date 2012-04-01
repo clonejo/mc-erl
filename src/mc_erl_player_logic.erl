@@ -138,8 +138,16 @@ handle_cast(Req, State) ->
 			end,
 			State;
 		
+		{packet, {entity_action, [MyEid, 1]}} -> % crouch
+			mc_erl_entity_manager:broadcast_local(MyEid, {entity_metadata, MyEid, [{0, {byte, 2}}]}),
+			State;
+		
+		{packet, {entity_action, [MyEid, 2]}} -> % uncrouch
+			mc_erl_entity_manager:broadcast_local(MyEid, {entity_metadata, MyEid, [{0, {byte, 0}}]}),
+			State;
+		
 		{packet, {entity_action, [MyEid, _N]}} ->
-			% broadcast crouching/not crouching to other players
+			% sprinting, leaving bed
 			State;
 		
 		{packet, {player_abilities, [_, _Flying, _, _]}} ->
@@ -158,6 +166,13 @@ handle_cast(Req, State) ->
 		{animate, Eid, AnimationId} ->
 			case dict:is_key(Eid, State#state.known_entities) of
 				true -> write(Writer, {animation, [Eid, AnimationId]});
+				false -> ok
+			end,
+			State;
+		
+		{entity_metadata, Eid, Metadata} ->
+			case dict:is_key(Eid, State#state.known_entities) of
+				true -> write(Writer, {entity_metadata, [Eid, Metadata]});
 				false -> ok
 			end,
 			State;
