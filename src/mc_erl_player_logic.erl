@@ -254,7 +254,7 @@ precise_positions(State) ->
 			{X, Y, Z, Yaw, Pitch} = Entity#entity_data.location,
 			FracYaw = trunc(Yaw*256/360),
 			FracPitch = trunc(Pitch*256/360),
-			write(Writer, {entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]})			
+			write(Writer, {entity_teleport, [Eid, X, Y, Z, FracYaw, FracPitch]})			
 		end, lists:filter(fun(P) -> 
 			{X, Y, Z, _Yaw, _Pitch} = P#entity_data.location,
 			in_range({X, Y, Z}, State) and (MyEid /= P#entity_data.eid)
@@ -293,9 +293,9 @@ move_known_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 	
 	ChangePackets = if
 		DDistance >= 4 ->
-			[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
+			[{entity_teleport, [Eid, X, Y, Z, FracYaw, FracPitch]}];
 		true ->
-			[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
+			[{entity_look_move, [Eid, DX, DY, DZ, FracYaw, FracPitch]},
 			 {entity_head_look, [Eid, FracYaw]}]
 	end,
 	NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, Data}, State#state.known_entities),
@@ -309,7 +309,7 @@ spawn_new_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 		EntityData#entity_data.type == player ->
 			PName = EntityData#entity_data.metadata#player_metadata.name,
 			PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
-			write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
+			write(Writer, {named_entity_spawn, [Eid, PName, X, Y, Z, trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, {}}, State#state.known_entities),
 			State#state{known_entities=NewKnownEntities};
 		true ->
