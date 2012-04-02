@@ -16,6 +16,7 @@ packet(Logic, Packet) ->
 	gen_server:cast(Logic, Packet).
 
 init([Writer, Name]) ->
+	process_flag(trap_exit, true),
 	{ok, #state{writer=Writer, player=#player{name=Name, player_logic=self()}}}.
 
 terminate(_Reason, State) ->
