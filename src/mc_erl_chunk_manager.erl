@@ -56,21 +56,20 @@ chunks_in_range({CX, CZ}, Range) ->
 	sets:from_list(lists:flatten(
 		[{X, Z} || X<-lists:seq(CX-Range, CX+Range), Z<-lists:seq(CZ-Range, CZ+Range)])).
 
-asynchronous_get_chunk(ChunkCoord) ->
-	Q = fun() -> mnesia:read(column, ChunkCoord) end,
-	{atomic, R} = mnesia:transaction(Q),
-	case R of
-		[] ->
-			C = mc_erl_chunk_generator:gen_column(ChunkCoord),
-			write_column(ChunkCoord, C),
-			C;
-		[{column, ChunkCoord, C}] -> C
-	end.
-			
 get_chunk({_, _, _}=Pos) ->
 	get_chunk(coord_to_chunk(Pos));
-get_chunk({_, _}=Coord) ->
-	gen_server:call(?MODULE, {get_chunk, Coord}).
+get_chunk({_, _}=ChunkCoord) ->
+	Q = fun() ->
+		case mnesia:read(column, ChunkCoord) of
+			[] ->
+				C = mc_erl_chunk_generator:gen_column(ChunkCoord),
+				mnesia:write(#column{pos=ChunkCoord, data=C}),
+				C;
+			[{column, ChunkCoord, C}] -> C
+		end
+	end,
+	{atomic, R} = mnesia:transaction(Q),
+	R.
 
 loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 
@@ -153,13 +152,6 @@ init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
 	{ok, void}.
 
-handle_call({get_chunk, ChunkCoord}, From, Chunks) ->
-	proc_lib:spawn_link(fun() ->
-		Chunk = asynchronous_get_chunk(ChunkCoord),
-		gen_server:reply(From, Chunk)
-		end),
-	{noreply, Chunks};
-
 handle_call(loaded_chunks, _From, Chunks) ->
 	{reply, mnesia:table_info(column, size), Chunks};
 
@@ -177,7 +169,7 @@ handle_cast(clear_map, State) ->
 	{noreply, State};
 
 handle_cast({set_block, {_X, Y, _Z}=Coord, {BlockId, Metadata}}, Chunks) ->
-	Column = asynchronous_get_chunk(coord_to_chunk(Coord)),
+	Column = get_chunk(coord_to_chunk(Coord)),
 	Chunk = case proplists:get_value(Y div 16, Column#chunk_column_data.chunks) of
 		undefined -> #chunk_data{types=binary:copy(<<0>>,16*16*16),
 	                             metadata=binary:copy(<<0>>,16*16*8),
