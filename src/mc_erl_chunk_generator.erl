@@ -19,5 +19,6 @@ gen_column({X, Y}) ->
 	                   chunks=[{0, BedrockChunk},
 	                           {1, StoneChunk},
 	                           {2, StoneChunk},
-	                           {3, TopChunk}],
+	                           {3, TopChunk},
+	                           {4, EmptyChunk}],
 	                   biome=binary:copy(<<0>>,256)}.

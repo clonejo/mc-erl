@@ -46,17 +46,17 @@ get_by_id(Id) ->
 		19 ->
 			{19, entity_action, [int, byte]};
 		20 ->
-			{20, named_entity_spawn, [int, string, int, int, int,
+			{20, named_entity_spawn, [int, string, abs_int, abs_int, abs_int,
 			                          byte, byte, short]};
 		21 ->
 			{21, pickup_spawn, [int, short, byte, short,
-			                    int, int, int, byte, byte, byte]};
+			                    abs_int, abs_int, abs_int, byte, byte, byte]};
 		22 ->
 			{22, collect_item, [int, int]};
 		23 -> % no fireballs supported!
-			{23, add_object, [int, byte, int, int, int, projectile_data]}; 
+			{23, add_object, [int, byte, abs_int, abs_int, abs_int, projectile_data]}; 
 		24 ->
-			{24, mob_spawn, [int, byte, int, int, int, byte, byte, byte, metadata]};
+			{24, mob_spawn, [int, byte, abs_int, abs_int, abs_int, byte, byte, byte, metadata]};
 		26 ->
 			{26, experience_orb, [int, int, int, int, short]};
 		28 ->
@@ -64,13 +64,13 @@ get_by_id(Id) ->
 		29 ->
 			{29, destroy_entity, [int]};
 		31 ->
-			{31, entity_move, [int, byte, byte, byte]};
+			{31, entity_move, [int, abs_byte, abs_byte, abs_byte]};
 		32 ->
 			{32, entity_look, [int, byte, byte]};
 		33 ->
-			{33, entity_look_move, [int, byte, byte, byte, byte, byte]};
+			{33, entity_look_move, [int, abs_byte, abs_byte, abs_byte, byte, byte]};
 		34 ->
-			{34, entity_teleport, [int, int, int, int, byte, byte]};
+			{34, entity_teleport, [int, abs_int, abs_int, abs_int, byte, byte]};
 		35 ->
 			{35, entity_head_look, [int, byte]};
 		38 ->
@@ -102,7 +102,7 @@ get_by_id(Id) ->
 		70 ->
 			{70, new_invalid_state, [byte, byte]};
 		71 ->
-			{71, thunderbolt, [int, bool, int, int, int]};
+			{71, thunderbolt, [int, bool, abs_int, abs_int, abs_int]};
 		100 ->
 			{100, open_window, [byte, byte, string, byte]};
 		101 ->

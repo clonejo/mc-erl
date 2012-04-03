@@ -1,6 +1,6 @@
 -module(mc_erl_protocol).
 
--export([decode_packet/1, encode_packet/1, to_absint/1, from_absint/1]).
+-export([decode_packet/1, encode_packet/1]).
 
 -include("records.hrl").
 
@@ -25,10 +25,10 @@
 	16#13A, 16#13B, 16#13C, 16#13D]). %GOLD
 
 % Protocol weirdness handling
-to_absint(Value) ->
+to_absint(Value) when is_float(Value) orelse is_integer(Value) ->
 	trunc(Value*32).
 
-from_absint(Value) ->
+from_absint(Value) when is_integer(Value) ->
 	Value/32.
 
 
@@ -56,9 +56,11 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			bool -> read_bool(Socket);
 			byte -> read_byte(Socket);
 			ubyte -> read_ubyte(Socket);
+			abs_byte -> from_absint(read_byte(Socket));
 			short -> read_short(Socket);
 			ushort -> read_ushort(Socket);
 			int -> read_int(Socket);
+			abs_int -> from_absint(read_int(Socket));
 			long -> read_long(Socket);
 			float -> read_float(Socket);
 			double -> read_double(Socket);
@@ -305,9 +307,11 @@ encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 		bool -> encode_bool(P);
 		byte -> encode_byte(P);
 		ubyte -> encode_ubyte(P);
+		abs_byte -> encode_byte(to_absint(P));
 		short -> encode_short(P);
 		ushort -> encode_ushort(P);
 		int -> encode_int(P);
+		abs_int -> encode_int(to_absint(P));
 		long -> encode_long(P);
 		float -> encode_float(P);
 		double -> encode_double(P);

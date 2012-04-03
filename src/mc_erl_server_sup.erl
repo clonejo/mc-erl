@@ -1,7 +1,11 @@
 -module(mc_erl_server_sup).
 -behaviour(supervisor).
 
--export([start_link/0, shutdown/0, init/1]).
+-export([setup/0, start_link/0, shutdown/0, init/1]).
+
+%% initial server setup, needs to be done only once
+setup() ->
+	mc_erl_chunk_manager:setup().
 
 init(_Args) ->
 	{ok, {{one_for_one, 3, 15}, 

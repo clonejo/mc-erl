@@ -18,6 +18,7 @@ packet(Logic, Packet) ->
 	gen_server:cast(Logic, Packet).
 
 init([Writer, Name]) ->
+	process_flag(trap_exit, true),
 	{ok, #state{writer=Writer, player=#player{name=Name, player_logic=self()}}}.
 
 terminate(_Reason, State) ->
@@ -174,8 +175,16 @@ handle_cast(Req, State) ->
 			mc_erl_entity_manager:broadcast_local(MyEid, {animate, MyEid, AnimationId}),
 			State;
 		
+		{packet, {entity_action, [MyEid, 1]}} -> % crouch
+			mc_erl_entity_manager:broadcast_local(MyEid, {entity_metadata, MyEid, [{0, {byte, 2}}]}),
+			State;
+		
+		{packet, {entity_action, [MyEid, 2]}} -> % uncrouch
+			mc_erl_entity_manager:broadcast_local(MyEid, {entity_metadata, MyEid, [{0, {byte, 0}}]}),
+			State;
+		
 		{packet, {entity_action, [MyEid, _N]}} ->
-			% broadcast crouching/not crouching to other players
+			% sprinting, leaving bed
 			State;
 		
 		{packet, {player_abilities, [_, _Flying, _, _]}} ->
@@ -325,9 +334,18 @@ handle_cast(Req, State) ->
 				false -> ok
 			end,
 			State;
+		
+		{entity_metadata, Eid, Metadata} ->
+			case dict:is_key(Eid, State#state.known_entities) of
+				true -> write(Writer, {entity_metadata, [Eid, Metadata]});
+				false -> ok
+			end,
+			State;
 			
 		{tick, Tick} ->
 			if
+				(Tick rem 20) == 0 ->
+					write(Writer, {time_update, [Tick]});
 				true -> ok
 			end,
 			FinalState = State#state{last_tick=Tick},
@@ -395,6 +413,7 @@ handle_cast(Req, State) ->
 		Res -> {noreply, Res}
 	end.
 
+% ==== update entity location
 update_entity(Eid, {X, Y, Z, _Yaw, _Pitch}=NewLocation, State) ->
 	if
 		Eid == State#state.player#player.eid ->
@@ -430,10 +449,10 @@ move_known_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 	ChangePackets = if
 		(DDistance >= 4) or (RelativeRelocations >= 20) ->
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, KEMetadata#ke_metadata{relocations=0}}, State#state.known_entities),
-			[{entity_teleport, [Eid, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), FracYaw, FracPitch]}];
+			[{entity_teleport, [Eid, X, Y, Z, FracYaw, FracPitch]}];
 		true ->
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, KEMetadata#ke_metadata{relocations=RelativeRelocations + 1}}, State#state.known_entities),
-			[{entity_look_move, [Eid, mc_erl_protocol:to_absint(DX), mc_erl_protocol:to_absint(DY), mc_erl_protocol:to_absint(DZ), FracYaw, FracPitch]},
+			[{entity_look_move, [Eid, DX, DY, DZ, FracYaw, FracPitch]},
 			 {entity_head_look, [Eid, FracYaw]}]
 	end,
 	lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
@@ -446,7 +465,7 @@ spawn_new_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 		EntityData#entity_data.type == player ->
 			PName = EntityData#entity_data.metadata#player_metadata.name,
 			PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
-			write(Writer, {named_entity_spawn, [Eid, PName, mc_erl_protocol:to_absint(X), mc_erl_protocol:to_absint(Y), mc_erl_protocol:to_absint(Z), trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
+			write(Writer, {named_entity_spawn, [Eid, PName, X, Y, Z, trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, #ke_metadata{}}, State#state.known_entities),
 			State#state{known_entities=NewKnownEntities};
 		true ->

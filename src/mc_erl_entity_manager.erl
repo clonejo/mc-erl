@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2, entity_details/1,
-         get_all_entities/0, get_all_players/0, get_player/1, broadcast/1, broadcast_local/2, broadcast_visible/2]).
+         get_all_entities/0, get_all_players/0, get_player/1, player_count/0, broadcast/1, broadcast_local/2, broadcast_visible/2]).
 %-define(dev, void).
 -include("records.hrl").
 
@@ -35,6 +35,9 @@ get_all_entities() ->
 
 get_player(Name) ->
 	gen_server:call(?MODULE, {get_player, Name}).
+
+player_count() ->
+	gen_server:call(?MODULE, player_count).
 
 entity_details(Eid) ->
 	gen_server:call(?MODULE, {entity_details, Eid}).
@@ -80,6 +83,9 @@ handle_call({delete_player, Player}, _From, State) ->
 	broadcast({delete_player, Player}),
 	ets:delete(State#state.entities, Player#player.eid),
 	{reply, ets:delete(State#state.players, Player#player.name), State};
+
+handle_call(player_count, _From, State) ->
+	{reply, ets:info(State#state.players, size), State};
 
 handle_call(get_all_players, _From, State) ->
 	Players = ets:tab2list(State#state.players),
