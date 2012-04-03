@@ -180,7 +180,9 @@ handle_cast(Req, State) ->
 			
 		{tick, Tick} ->
 			if
-				(Tick rem 20) == 0 -> precise_positions(State);
+				(Tick rem 20) == 0 ->
+					write(Writer, {time_update, [Tick]}),
+					precise_positions(State);
 				true -> ok
 			end,
 			FinalState = State#state{last_tick=Tick},
