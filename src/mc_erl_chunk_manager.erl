@@ -1,7 +1,7 @@
 -module(mc_erl_chunk_manager).
 -behaviour(gen_server).
 
--export([setup/0, start_link/0, stop/0, clear_map/0, coord_to_chunk/1, chunks_in_range/2, get_chunk/1,
+-export([setup/0, start_link/0, stop/0, clear_map/0, reset_chunk/1, coord_to_chunk/1, chunks_in_range/2, get_chunk/1,
          set_block/2, set_block/3, loaded_chunks/0, undirectional_block_coord/1]).
 
 -include("records.hrl").
@@ -74,6 +74,11 @@ get_chunk({_, _}=ChunkCoord) ->
 loaded_chunks() -> gen_server:call(?MODULE, loaded_chunks).
 
 clear_map() -> gen_server:cast(?MODULE, clear_map).
+
+reset_chunk({_X, _Z} = Coord) ->
+	Q = fun() -> mnesia:delete({column, Coord}) end,
+	{atomic, ok} = mnesia:transaction(Q),
+	mc_erl_entity_manager:broadcast({update_column, Coord}).
 
 %get_compressed_chunk(...
 

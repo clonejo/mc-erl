@@ -196,6 +196,17 @@ handle_cast(Req, State) ->
 			end,
 			State;
 		
+		% just a notification, player_logic pulls column if necessary
+		% possible enhancement: when compressed columns are cached, chunk_manager can send compressed chunk (hence binaries are referenced!)
+		{update_column, {X, Z}=Coord} ->
+			case sets:is_element(Coord, State#state.chunks) of
+				false -> ok;
+				true ->
+					ChunkData = mc_erl_chunk_manager:get_chunk(Coord),
+					write(Writer, {map_chunk, [X, Z, {parsed, ChunkData}]})
+			end,
+			State;
+		
 		{new_player, Player} ->
 			write(Writer, {player_list_item, [Player#player.name, true, 1]}),
 			State;
@@ -213,7 +224,7 @@ handle_cast(Req, State) ->
 		{update_entity_position, {Eid, {_X, _Y, _Z, _Yaw, _Pitch}=NewLocation}} ->
 			NewState = update_entity(Eid, NewLocation, State),
 			NewState;
-					
+		
 		net_disconnect ->
 			{disconnect, net_disconnect, State};
 		
