@@ -4,6 +4,8 @@
 
 -include("records.hrl").
 
+-define(timeout, 10000).
+
 -define(enchantable, [
 	16#103, %Flint and steel
 	16#105, %Bow
@@ -78,43 +80,43 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 		end|Output]).
 
 read_bool(Socket) ->
-	{ok, <<N:8>>} = gen_tcp:recv(Socket, 1),
+	{ok, <<N:8>>} = gen_tcp:recv(Socket, 1, ?timeout),
 	N =:= 1.
 
 read_byte(Socket) ->
-	{ok, <<N:8/signed>>} = gen_tcp:recv(Socket, 1),
+	{ok, <<N:8/signed>>} = gen_tcp:recv(Socket, 1, ?timeout),
 	N.
 
 read_ubyte(Socket) ->
-	{ok, <<N:8/unsigned>>} = gen_tcp:recv(Socket, 1),
+	{ok, <<N:8/unsigned>>} = gen_tcp:recv(Socket, 1, ?timeout),
 	N.
 
 read_short(Socket) ->
-	{ok, <<N:16/signed>>} = gen_tcp:recv(Socket, 2),
+	{ok, <<N:16/signed>>} = gen_tcp:recv(Socket, 2, ?timeout),
 	N.
 
 read_ushort(Socket) ->
-	{ok, <<N:16/unsigned>>} = gen_tcp:recv(Socket, 2),
+	{ok, <<N:16/unsigned>>} = gen_tcp:recv(Socket, 2, ?timeout),
 	N.
 
 read_int(Socket) ->
-	{ok, <<N:32/signed>>} = gen_tcp:recv(Socket, 4),
+	{ok, <<N:32/signed>>} = gen_tcp:recv(Socket, 4, ?timeout),
 	N.
 
 read_long(Socket) ->
-	{ok, <<N:64/signed>>} = gen_tcp:recv(Socket, 8),
+	{ok, <<N:64/signed>>} = gen_tcp:recv(Socket, 8, ?timeout),
 	N.
 
 read_float(Socket) ->
-	{ok, <<N:32/float>>} = gen_tcp:recv(Socket, 4),
+	{ok, <<N:32/float>>} = gen_tcp:recv(Socket, 4, ?timeout),
 	N.
 
 read_double(Socket) ->
-	{ok, <<N:64/float>>} = gen_tcp:recv(Socket, 8),
+	{ok, <<N:64/float>>} = gen_tcp:recv(Socket, 8, ?timeout),
 	N.
 
 read_bit_set(Socket, Bytes) ->
-	{ok, Bin} = gen_tcp:recv(Socket, Bytes),
+	{ok, Bin} = gen_tcp:recv(Socket, Bytes, ?timeout),
 	parse_bit_set(binary_to_list(Bin), []).
 
 parse_bit_set([], Output) ->
@@ -130,7 +132,7 @@ read_string(Socket) ->
 		0 -> [];
 		Length ->
 			BinLength = Length * 2,
-			{ok, Bin} = gen_tcp:recv(Socket, BinLength),
+			{ok, Bin} = gen_tcp:recv(Socket, BinLength, ?timeout),
 			decode_ucs_2(Bin, [])
 	end.
 
@@ -177,7 +179,7 @@ read_slot(Socket) ->
 						-1 ->
 							{ItemId, ItemCount, Metadata, []};
 						BinLength ->
-							{ok, BinEnchantments} = gen_tcp:recv(Socket, BinLength),
+							{ok, BinEnchantments} = gen_tcp:recv(Socket, BinLength, ?timeout),
 							{ItemId, ItemCount, Metadata, read_enchantments(BinEnchantments)}
 					end;
 				false -> 
@@ -222,7 +224,7 @@ read_chunk_data(Socket) ->
 	_AddChunks = read_bit_set(Socket, 2),
 	Length = read_int(Socket),
 	_ = read_int(Socket),
-	{ok, Bin} = gen_tcp:recv(Socket, Length),
+	{ok, Bin} = gen_tcp:recv(Socket, Length, ?timeout),
 	Uncompressed = zlib:uncompress(Bin),
 	{TypeBin, Rest1} = split_binary(Uncompressed, 4096*ChunksCount),
 	{MetadataBin, Rest2} = split_binary(Rest1, 2048*ChunksCount),
@@ -263,7 +265,7 @@ read_multi_block_change_datasets(Socket, RecordCount) -> read_multi_block_change
 
 read_multi_block_change_datasets(_Socket, 0, DeltaBlocks) -> lists:reverse(DeltaBlocks);
 read_multi_block_change_datasets(Socket, RecordCount, DeltaBlocks) ->
-	{ok, Raw} = gen_tcp:recv(Socket, 4),
+	{ok, Raw} = gen_tcp:recv(Socket, 4, ?timeout),
 	<<DX:4/unsigned, DZ:4/unsigned, DY:8/unsigned, BlockID:12/unsigned, Metadata:4/unsigned>> = Raw,
 	read_multi_block_change_datasets(Socket, RecordCount - 1, [{DX, DZ, DY, BlockID, Metadata}|DeltaBlocks]).
 
@@ -280,7 +282,7 @@ read_projectile_data(Socket) ->
 %% coordinates are also unparsed
 read_coordinate_offsets(Socket) ->
 	OffsetsNum = read_int(Socket),
-	{ok, Bin} = gen_tcp:recv(Socket, 3*OffsetsNum),
+	{ok, Bin} = gen_tcp:recv(Socket, 3*OffsetsNum, ?timeout),
 	{raw, OffsetsNum, Bin}.
 
 % ======================================================================
