@@ -53,7 +53,7 @@ handle_cast({new_connection, Socket}, State) ->
 	gen_tcp:controlling_process(Socket, Pid),
 	{noreply, State};
 
-handle_cast({tick, Time}=Tick, State) ->
+handle_cast({tick, Time}=Tick, State) when is_integer(Time) ->
 	mc_erl_entity_manager:broadcast(Tick),
 	mc_erl_chunk_manager:tick(Time),
 	{noreply, State};

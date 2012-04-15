@@ -11,12 +11,12 @@ init(_Args) ->
 	{ok, {{one_for_one, 3, 15}, 
 		[{mc_erl_config, {mc_erl_config, start_link, []},
 			permanent, 2000, worker, [mc_erl_config]},
-		 {mc_erl_server, {mc_erl_server, start_link, []},
-			permanent, 2000, worker, [mc_erl_server]},
 		 {mc_erl_chunk_manager, {mc_erl_chunk_manager, start_link, []},
 		 	permanent, 2000, worker, [mc_erl_chunk_manager]},
 		 {mc_erl_entity_manager, {mc_erl_entity_manager, start_link, []},
-			permanent, 2000, worker, [mc_erl_entity_manager]}
+			permanent, 2000, worker, [mc_erl_entity_manager]},
+		 {mc_erl_server, {mc_erl_server, start_link, []},
+			permanent, 2000, worker, [mc_erl_server]}
 		 ]}
 	}.
 

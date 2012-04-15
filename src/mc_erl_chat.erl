@@ -6,7 +6,10 @@
 
 -define(ALLOWED_CHARS, " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»").
 
-broadcast(Player, Message) ->
+broadcast(Player, Message) when is_record(Player, entity) andalso Player#entity.type =:= player ->
+	broadcast(Player#entity.name ++ ": " ++ Message);
+
+broadcast(Player, Message) when is_record(Player, player) ->
 	broadcast(Player#player.name ++ ": " ++ Message).
 
 broadcast(Message) ->
@@ -16,12 +19,12 @@ broadcast(Message) ->
 
 
 %% Receiver = player record or name or pid
-to_player(Name, Message) when is_list(Name) ->
+to_player(Name, Message) when is_list(Name) andalso length(Name) > 0 ->
 	Receiver = mc_erl_entity_manager:get_player(Name),
 	to_player(Receiver, Message);
 	
-to_player(Receiver, Message) when is_tuple(Receiver) ->
-	to_player(Receiver#player.player_logic, Message);
+to_player(Receiver, Message) when is_record(Receiver, entity) andalso Receiver#entity.type =:= player ->
+	to_player(Receiver#entity.logic, Message);
 	
 to_player(Logic, Message) when is_pid(Logic) ->
 	Parts = split_message(Message),

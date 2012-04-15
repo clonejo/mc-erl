@@ -19,7 +19,7 @@ packet(Logic, Packet) ->
 
 init([Writer, Name]) ->
 	process_flag(trap_exit, true),
-	{ok, #state{writer=Writer, player=#player{name=Name, player_logic=self()}}}.
+	{ok, #state{writer=Writer, player=#player{name=Name}}}.
 
 terminate(_Reason, State) ->
 	State#state.writer ! stop,
@@ -78,7 +78,7 @@ handle_cast(Req, State) ->
 							broadcast_position(StartPos, NewPlayer#player.eid),
 							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-							mc_erl_chat:to_player(NewPlayer#player.name, mc_erl_config:get(motd)),
+							mc_erl_chat:to_player(self(), mc_erl_config:get(motd)),
 							NewState#state{chunks=Chunks, logged_in=true}
 					end;
 				false ->
@@ -473,10 +473,15 @@ spawn_new_entity(Eid, {X, Y, Z, Yaw, Pitch}, State) ->
 	Writer = State#state.writer,
 	EntityData = mc_erl_entity_manager:entity_details(Eid),
 	if
-		EntityData#entity_data.type == player ->
-			PName = EntityData#entity_data.metadata#player_metadata.name,
-			PHolding = EntityData#entity_data.metadata#player_metadata.holding_item,
-			write(Writer, {named_entity_spawn, [Eid, PName, X, Y, Z, trunc(Yaw*256/360), trunc(Yaw*256/360), PHolding]}),
+		EntityData#entity.type == player ->
+			PName = EntityData#entity.name,
+			PHolding = EntityData#entity.item_id,
+			write(Writer, {named_entity_spawn,
+			               [Eid, PName, X, Y, Z, trunc(Yaw*256/360), trunc(Yaw*256/360),
+			                case PHolding of
+			                	empty -> 0;
+			                	N when is_integer(N) -> N
+			                end]}),
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, #ke_metadata{}}, State#state.known_entities),
 			State#state{known_entities=NewKnownEntities};
 		true ->
@@ -496,7 +501,7 @@ delete_entity(Eid, State) ->
 send_player_list(State) ->
 	Writer = State#state.writer,
 	Players = mc_erl_entity_manager:get_all_players(),
-	lists:foreach(fun(Player) -> write(Writer, {player_list_item, [Player#player.name, true, 1]}) end, Players).
+	lists:foreach(fun(Player) -> write(Writer, {player_list_item, [Player#entity.name, true, 1]}) end, Players).
 
 send_inventory(State) ->
 	Writer = State#state.writer,
