@@ -11,7 +11,7 @@ read(Socket) ->
 		{server_list_ping, [] } ->
 			%io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
 			send(Socket, {disconnect,[lists:flatten([
-				mc_erl_config:get(description),167,
+				mc_erl_config:get(description, []),167,
 				integer_to_list(mc_erl_entity_manager:player_count()),167,"100"])]});
 			%gen_tcp:close(Socket);
 
