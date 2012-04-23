@@ -1,0 +1,29 @@
+#!/usr/bin/env escript
+%%! -pa ./ebin -boot start_sasl
+
+% always call this from the same directory!
+
+main([Cmd]) ->
+	try
+		case Cmd of
+			"setup" ->
+				mnesia:start(),
+				mc_erl_app:setup(),
+				mnesia:stop(),
+				io:format("done!~n"),
+				halt(0);
+			"run" ->
+				mnesia:start(),
+				ok = application:start(mc_erl),
+				receive _ -> ok end;
+			_ -> usage()
+		end
+	catch
+		Re:Msg -> io:format("~p:~p, Stacktrace:~n~p~n", [Re, Msg, erlang:get_stacktrace()])
+	end;
+main(_) ->
+	usage().
+
+usage() ->
+	io:format("usage: mc_erl setup|run\n"),
+	halt(1).

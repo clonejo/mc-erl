@@ -7,7 +7,7 @@
 % api functions
 -export([start_link/0, get/2, set/2, reload/0]).
 
--define(CONFIG_FILE, "../server.conf"). % change pwd to have the server look elsewhere
+-define(CONFIG_FILE, "server.conf"). % change pwd to have the server look elsewhere
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).

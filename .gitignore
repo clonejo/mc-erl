@@ -1,8 +1,9 @@
+*~
+*.app
 *.beam
 *.bat
-*.sh
 *.dump
-*~
 *.log
+*.sh
 *.zip
-ebin/Mnesia.*
+ebin/*
