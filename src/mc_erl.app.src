@@ -1,0 +1,10 @@
+{application, mc_erl,
+	[
+		{mod, {mc_erl_app, []}},
+		{description, "minecraft server"},
+		{vsn, "1"},
+		%{modules, []}, % added by rebar
+		{registered, []},
+		{applications, [kernel, stdlib, mnesia]}
+	]
+}.

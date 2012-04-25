@@ -18,7 +18,7 @@ stop() ->
 % gen_server callbacks
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
-	Port = mc_erl_config:get(port),
+	Port = mc_erl_config:get(port, 25565),
 	{ok, Listen} = gen_tcp:listen(Port, [binary, {reuseaddr, true}, {active, false},
 	                           {packet, raw}, {nodelay, true}]),
 	spawn_link(fun() -> acceptor(Listen) end),

@@ -5,15 +5,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % api functions
--export([start_link/0, get/1, set/2, reload/0]).
+-export([start_link/0, get/2, set/2, reload/0]).
 
--define(CONFIG_FILE, "../server.conf").
+-define(CONFIG_FILE, "server.conf"). % change pwd to have the server look elsewhere
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-get(Key) ->
-	gen_server:call(?MODULE, {get, Key}).
+get(Key, Default) ->
+	gen_server:call(?MODULE, {get, Key, Default}).
 
 %% not implemented yet
 set(Key, Value) ->
@@ -26,12 +26,16 @@ reload() ->
 init([]) ->
 	io:format("[~s] starting~n", [?MODULE]),
 	Entries = ets:new(void, [set, private]),
-	load_file(Entries, ?CONFIG_FILE),
+	try
+		load_file(Entries, ?CONFIG_FILE)
+	catch
+		error:_ -> io:format("[~s] can't access server.conf~n", [?MODULE])
+	end,
 	{ok, Entries}.
 
-handle_call({get, Key}, _From, Entries) ->
+handle_call({get, Key, Default}, _From, Entries) ->
 	{reply, case ets:lookup(Entries, Key) of
-		[] -> undefined;
+		[] -> Default;
 		[{Key, Value}] -> Value
 	end, Entries};
 
