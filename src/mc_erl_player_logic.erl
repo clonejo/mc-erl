@@ -78,7 +78,7 @@ handle_cast(Req, State) ->
 							broadcast_position(StartPos, NewPlayer#player.eid),
 							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
-							mc_erl_chat:to_player(self(), mc_erl_config:get(motd)),
+							mc_erl_chat:to_player(self(), mc_erl_config:get(motd, "")),
 							NewState#state{chunks=Chunks, logged_in=true}
 					end;
 				false ->
