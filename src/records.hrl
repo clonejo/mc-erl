@@ -7,8 +7,8 @@
 %% eid: [key]
 %% name: only used for players [index]
 %% type: player|mob|drop|falling_block
-%% item_id: hold item for players/mobs, item id for drops
--record(entity, {eid, name, type, logic, location={0,0,0,0,0}, item_id = empty}).
+%% item_id: hold item for players/mobs, Slot = {ItemId, Count, Metadata} for drops
+-record(entity, {eid, name, type, logic, location, item_id = empty}).
 
 %% used for persistent player table and within player_logic
 -record(player, {eid, name, mode=survival, location={0,0,0,0,0},

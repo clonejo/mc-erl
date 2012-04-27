@@ -30,7 +30,6 @@ read(Socket) ->
 			mc_erl_player_logic:packet(Logic, login_sequence),
 			
 			proc_lib:spawn_link(fun() -> keep_alive_sender(Socket) end),
-			io:format("read: ~p~n", [self()]),
 			read(Socket, Logic)
 	end.
 
@@ -57,11 +56,7 @@ async_writer(Socket) ->
 			gen_tcp:close(Socket),
 			ok;
 		{packet, Data} ->
-			try send(Socket, Data) of
-				Any -> Any
-			catch
-				Ex: Reason -> io:format("[writer] bad packet: ~p~n", [Data])
-			end,
+			send(Socket, Data),
 			async_writer(Socket)
 	end.
 
