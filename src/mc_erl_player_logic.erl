@@ -329,13 +329,9 @@ handle_cast(Req, State) ->
 			State;
 		
 		{animate, Eid, AnimationId} ->
-			if
-				Eid =:= MyEid -> ok;
-				true ->
-					case dict:is_key(Eid, State#state.known_entities) of
-						true -> write(Writer, {animation, [Eid, AnimationId]});
-						false -> ok
-					end
+			case dict:is_key(Eid, State#state.known_entities) of
+				true -> write(Writer, {animation, [Eid, AnimationId]});
+				false -> ok
 			end,
 			State;
 		
@@ -385,8 +381,12 @@ handle_cast(Req, State) ->
 		
 		% === entity messages ===
 		{new_entity, Entity} ->
-			NewState = spawn_new_entity(Entity, State),
-			NewState;
+			case MyEid =:= Entity#entity.eid of
+				true -> State;
+				false ->
+					NewState = spawn_new_entity(Entity, State),
+					NewState
+			end;
 		
 		{delete_entity, Eid} ->
 			NewState = delete_entity(Eid, State),
