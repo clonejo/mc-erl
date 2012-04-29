@@ -66,8 +66,9 @@ handle_cast(Req, State) ->
         
                     NVY = VY + ?gravity_acc,
                     
-                    ProposedLocation = {PX, PY, PZ} = {floor(X+VX), floor(Y+NVY), floor(Z+VZ)},
-                    case mc_erl_chunk_manager:get_block(ProposedLocation) of
+                    {PX, PY, PZ} = {X+VX, Y+NVY, Z+VZ},
+                    ProposedBlock = {floor(PX), floor(PY), floor(PZ)},
+                    case mc_erl_chunk_manager:get_block(ProposedBlock) of
                         {0, _} ->
                             NewLocation = {PX, PY, PZ, 0, 0},
                             NewVelocity = {VX, NVY, VZ},
