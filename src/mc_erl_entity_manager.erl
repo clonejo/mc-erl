@@ -1,8 +1,9 @@
 -module(mc_erl_entity_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, register_player/1, delete_player/1, move_entity/2, entity_details/1,
-         get_all_entities/0, get_all_players/0, get_player/1, player_count/0, broadcast/1, broadcast_local/2, broadcast_visible/2]).
+-export([start_link/0, stop/0, register_player/1, delete_player/1, register_dropped_item/1,
+         move_entity/2, delete_entity/1, entity_details/1, get_all_entities/0, get_all_players/0,
+         get_player/1, player_count/0, broadcast/1, broadcast_local/2, broadcast_visible/2]).
 -define(dev, void).
 -include("records.hrl").
 
@@ -25,11 +26,24 @@ register_player(Player) ->
 delete_player(Player) when is_record(Player, player) orelse is_list(Player) ->
 	gen_server:call(?MODULE, {delete_player, Player}).
 
+%% has to be called from logic process!
+register_dropped_item(Entity) when is_record(Entity, entity)->
+	gen_server:call(?MODULE, {register_dropped_item, Entity, self()}).
+
 move_entity(Eid, {_X, _Y, _Z, _Pitch, _Yaw}=NewLocation) ->
-	Entity = entity_details(Eid),
-	NewEntity = Entity#entity{location=NewLocation},
-	{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(Entity) end),
-	broadcast({update_entity_position, {NewEntity}}).
+	case entity_details(Eid) of
+		undefined -> delete_entity(Eid);
+		Entity ->
+			NewEntity = Entity#entity{location=NewLocation},
+			{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(NewEntity) end),
+			broadcast({update_entity_position, {NewEntity}})
+	end.
+
+delete_entity(Entity) when is_record(Entity, entity) -> delete_entity(Entity#entity.eid);
+delete_entity(Eid) when is_integer(Eid) ->
+	broadcast({delete_entity, Eid}),
+	{atomic, ok} = mnesia:transaction(fun() -> mnesia:delete({entity, Eid}) end),
+	ok.
 
 get_all_players() ->
 	{atomic, Players} = mnesia:transaction(fun() -> mnesia:match_object(#entity{type=player, _='_'}) end),
@@ -47,8 +61,10 @@ get_player(Name) when is_list(Name), length(Name) > 0 ->
 	PlayerL.
 
 entity_details(Eid) ->
-	{atomic, [Entity]} = mnesia:transaction(fun() -> mnesia:read(entity, Eid) end),
-	Entity.
+	case mnesia:transaction(fun() -> mnesia:read(entity, Eid) end) of
+		{atomic, [Entity]} -> Entity;
+		{atomic, []} -> undefined
+	end.
 
 broadcast(Message) ->
 	lists:map(fun(X) -> mc_erl_player_logic:packet(X#entity.logic, Message) end, get_all_entities()).
@@ -94,12 +110,21 @@ handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
 	end;
 
 handle_call({delete_player, Player}, _From, State) when is_record(Player, player) ->
-	Entity = entity_details(Player#player.eid),
-	broadcast({delete_entity, Entity}),
+	case entity_details(Player#player.eid) of
+		undefined -> ok;
+		Entity -> broadcast({delete_entity, Entity})
+	end,
 	case mnesia:transaction(fun() -> mnesia:delete({entity, Player#player.eid}) end) of
 		{atomic, ok} ->	{reply, ok, State};
 		{aborted, _} -> {reply, not_found, State}
 	end;
+
+handle_call({register_dropped_item, Entity, Logic}, _From, State) ->
+	Eid = State#state.next_eid,
+	NewEntity = Entity#entity{eid=Eid, logic=Logic},
+	{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(NewEntity) end),
+	broadcast({new_entity, NewEntity}),
+	{reply, NewEntity, State#state{next_eid=Eid+1}};
 
 handle_call(Message, _From, State) ->
 	case Message of

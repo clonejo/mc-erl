@@ -510,8 +510,11 @@ move_known_entity(Entity, State) when is_record(Entity, entity) ->
 			[{entity_teleport, [Eid, X, Y, Z, FracYaw, FracPitch]}];
 		true ->
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, KEMetadata#ke_metadata{relocations=RelativeRelocations + 1}}, State#state.known_entities),
-			[{entity_look_move, [Eid, DX, DY, DZ, FracYaw, FracPitch]},
-			 {entity_head_look, [Eid, FracYaw]}]
+			case Entity#entity.type of
+				player -> [{entity_look_move, [Eid, DX, DY, DZ, FracYaw, FracPitch]},
+				           {entity_head_look, [Eid, FracYaw]}];
+				dropped_item -> [{entity_teleport, [Eid, X, Y, Z, 0, 0]}]
+			end
 	end,
 	lists:map(fun(Packet) -> write(Writer, Packet) end, ChangePackets),
 	State#state{known_entities=NewKnownEntities}.
