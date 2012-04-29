@@ -1,14 +1,28 @@
 -module(mc_erl_dropped_item).
 
--export([new/1]).
+-export([new/1, spawn/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {entity, falling={0,0,0}, last_tick}).
+-record(state, {entity, velocity={0,0,0}, moving=false, last_tick}).
 
 -include("records.hrl").
 
 -define(pick_up_range, 1).       % unit: m
--define(gravity_acc, 0,0245).    % unit: m/tick^2
+-define(gravity_acc, -0.0245).    % unit: m/tick^2
+-define(life_length, 600).      % unit: seconds
+
+
+floor(X) when X < 0 ->
+	T = trunc(X),
+	case X - T == 0 of
+		true -> T;
+		false -> T - 1
+	end;
+floor(X) ->
+	trunc(X).
+    
+spawn({X, Y, Z}, {_ItemId, _Count, _Metadata}=Data) ->
+    new(#entity{type=dropped_item, location={X,Y,Z,0,0}, item_id=Data}).
 
 new(Entity) when is_record(Entity, entity), Entity#entity.type =:= dropped_item ->
 	{ok, Pid} = gen_server:start_link(?MODULE, Entity, []),
@@ -16,7 +30,8 @@ new(Entity) when is_record(Entity, entity), Entity#entity.type =:= dropped_item 
 
 init(Entity) ->
 	process_flag(trap_exit, true),
-	{ok, #state{entity=mc_erl_entity_manager:register_dropped_item(Entity)}}.
+    erlang:send_after(?life_length * 1000, self(), suicide),
+	{ok, #state{entity=mc_erl_entity_manager:register_dropped_item(Entity), moving=true}}.
 
 terminate(_Reason, State) ->
 	mc_erl_entity_manager:delete_entity(State#state.entity),
@@ -25,10 +40,16 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
+handle_info(suicide, State) ->
+    {stop, normal, State};
+
 handle_info(Info, State) ->
 	io:format("[~s] got unknown info: ~p~n", [?MODULE, Info]),
 	{noreply, State}.
 
+handle_call(get_state, _From, State) ->
+    {reply, State, State};
+    
 handle_call(Req, _From, State) ->
 	io:format("[~s] got unknown call: ~p~n", [?MODULE, Req]),
 	{noreply, State}.
@@ -37,25 +58,32 @@ handle_cast(Req, State) ->
 	MyEntity = State#state.entity,
 	MyEid = MyEntity#entity.eid,
 	RetState = case Req of
-		% chat
-		{chat, _Message} -> State;
-		
-		{animate, _Eid, _AnimationId} -> State;
-		
-		{entity_metadata, _Eid, _Metadata} -> State;
-			
 		{tick, Tick} ->
-			% movement simulation, don't broadcast position updates
-			case State#state.falling of
-				_ -> State#state{last_tick=Tick}
-				%{VX, VY, VZ} -> % velocity in m per tick
-				%	{X, Y, Z, _, _} = MyEntity#entity.location,
-				%	NVX = VX + ?gravity_acc,
-				%	NVY = VY + ?gravity_acc,
-				%	NVZ = VZ + ?gravity_acc,
-				%	NewLocation = {X, Y, Z, 0, 0},
-				%	State#state{entity=MyEntity#entity{location=NewLocation}, last_tick=Tick}
-			end;
+            case State#state.moving of
+                true ->
+                    {VX, VY, VZ} = State#state.velocity,
+                    {X, Y, Z, _, _} = MyEntity#entity.location,
+        
+                    NVY = VY + ?gravity_acc,
+                    
+                    ProposedLocation = {PX, PY, PZ} = {floor(X+VX), floor(Y+NVY), floor(Z+VZ)},
+                    case mc_erl_chunk_manager:get_block(ProposedLocation) of
+                        {0, _} ->
+                            NewLocation = {PX, PY, PZ, 0, 0},
+                            NewVelocity = {VX, NVY, VZ},
+                            IsMoving = true;
+                        _ ->
+                            NewLocation = {X, Y, Z, 0, 0},
+                            NewVelocity = {0, 0, 0},
+                            IsMoving = false
+                    end,
+                    
+                    mc_erl_entity_manager:move_entity(MyEid, NewLocation),
+                    State#state{entity=MyEntity#entity{location=NewLocation}, velocity=NewVelocity, moving=IsMoving, last_tick=Tick};
+                
+                false ->
+                    State
+            end;
 		
 		% don't use these for movement simulation, register for events at chunk_manager
 		{block_delta, _} -> State;
@@ -77,8 +105,7 @@ handle_cast(Req, State) ->
 		{update_entity_position, {Entity}} when is_record(Entity, entity) ->
 			pick_up_check(Entity, State);
 		
-		UnknownMessage ->
-			io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
+		_UnknownMessage ->
 			State
 	end,
 	case RetState of

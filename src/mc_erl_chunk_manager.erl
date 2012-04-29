@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([setup/0, start_link/0, stop/0, clear_map/0, reset_chunk/1, coord_to_chunk/1, chunks_in_range/2, get_chunk/1,
-         set_block/2, set_block/3, loaded_chunks/0, undirectional_block_coord/1, tick/1]).
+         set_block/2, set_block/3, get_block/1, loaded_chunks/0, undirectional_block_coord/1, tick/1]).
 
 -include("records.hrl").
 
@@ -100,6 +100,32 @@ orientation(Yaw) ->
 		true ->
 			south
 		end
+	end.
+    
+get_block({_X, Y, _Z}=Pos) ->
+    Column = get_chunk(coord_to_chunk(Pos)),
+	case proplists:get_value(Y div 16, Column#chunk_column_data.chunks) of
+		undefined -> {0, 0}; % if the requested block is in the air-filled chunk, it is air
+		Chunk ->
+            % if it can possibly have something, find it out
+            % starting with block id
+            {RX, RY, RZ} = coord_within_chunk(Pos),
+            ByteOffset = RX+RZ*16+RY*256,
+            {_Head, Rest} = split_binary(Chunk#chunk_data.types, ByteOffset),
+            
+            {<<BlockId>>, _Tail} = split_binary(Rest, 1),
+            
+            % and now metadata
+            NibbleOffset = floor(ByteOffset/2),
+            {_MetaHead, MetaRest} = split_binary(Chunk#chunk_data.metadata, NibbleOffset),
+            {<<M1:4, M2:4>>, _MetaTail} = split_binary(MetaRest, 1), % i hate nibble packing
+            
+            MetadataValue = case ByteOffset rem 2 of
+                0 -> M2;
+                1 -> M1
+            end,
+            
+            {BlockId, MetadataValue}
 	end.
 			
 
