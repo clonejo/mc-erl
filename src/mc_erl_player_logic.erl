@@ -132,7 +132,10 @@ handle_cast(Req, State) ->
 		{packet, {player_digging, [2, X, Y, Z, _]}} ->
 			case MyPlayer#player.mode of
 				creative -> void;
-				survival -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0})
+				survival ->
+                    {BlockId, Metadata} = mc_erl_chunk_manager:get_block({X, Y, Z}),
+                    mc_erl_dropped_item:spawn({X, Y, Z}, {0.1, 0, 0}, {BlockId, 1, Metadata}),
+                    mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0})
 			end,
 			State;
 		
@@ -387,7 +390,16 @@ handle_cast(Req, State) ->
 					NewState = spawn_new_entity(Entity, State),
 					NewState
 			end;
+        
+        {set_entity_speed, Entity, {VX, VY, VZ}} ->
+            Eid = Entity#entity.eid,
+            AVx = trunc(VX*32000),
+            AVy = trunc(VY*32000),
+            AVz = trunc(VZ*32000),
+            write(Writer, {entity_velocity, [Eid, AVx, AVy, AVz]}),
+            State;
 		
+        
 		{delete_entity, Eid} ->
 			NewState = delete_entity(Eid, State),
 			NewState;

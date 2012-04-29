@@ -1,6 +1,6 @@
 -module(mc_erl_dropped_item).
 
--export([new/1, spawn/2]).
+-export([new/2, spawn/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {entity, velocity={0,0,0}, moving=false, last_tick}).
@@ -9,7 +9,7 @@
 
 -define(pick_up_range, 1).       % unit: m
 -define(gravity_acc, -0.0245).    % unit: m/tick^2
--define(life_length, 600).      % unit: seconds
+-define(life_length, 300).      % unit: seconds
 
 
 floor(X) when X < 0 ->
@@ -21,17 +21,17 @@ floor(X) when X < 0 ->
 floor(X) ->
 	trunc(X).
     
-spawn({X, Y, Z}, {_ItemId, _Count, _Metadata}=Data) ->
-    new(#entity{type=dropped_item, location={X,Y,Z,0,0}, item_id=Data}).
+spawn({X, Y, Z}, {_VX, _VY, _VZ}=InitialVelocity, {_ItemId, _Count, _Metadata}=Data) ->
+    new(#entity{type=dropped_item, location={X,Y,Z,0,0}, item_id=Data}, InitialVelocity).
 
-new(Entity) when is_record(Entity, entity), Entity#entity.type =:= dropped_item ->
-	{ok, Pid} = gen_server:start_link(?MODULE, Entity, []),
+new(Entity, Velocity) when is_record(Entity, entity), Entity#entity.type =:= dropped_item ->
+	{ok, Pid} = gen_server:start(?MODULE, {Entity, Velocity}, []),
 	Pid.
 
-init(Entity) ->
+init({Entity, Velocity}) ->
 	process_flag(trap_exit, true),
     erlang:send_after(?life_length * 1000, self(), suicide),
-	{ok, #state{entity=mc_erl_entity_manager:register_dropped_item(Entity), moving=true}}.
+	{ok, #state{entity=mc_erl_entity_manager:register_dropped_item(Entity, Velocity), velocity=Velocity, moving=true}}.
 
 terminate(_Reason, State) ->
 	mc_erl_entity_manager:delete_entity(State#state.entity),

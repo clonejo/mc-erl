@@ -1,7 +1,7 @@
 -module(mc_erl_entity_manager).
 -behaviour(gen_server).
 
--export([start_link/0, stop/0, register_player/1, delete_player/1, register_dropped_item/1,
+-export([start_link/0, stop/0, register_player/1, delete_player/1, register_dropped_item/2,
          move_entity/2, delete_entity/1, entity_details/1, get_all_entities/0, get_all_players/0,
          get_player/1, player_count/0, broadcast/1, broadcast_local/2, broadcast_visible/2]).
 -define(dev, void).
@@ -12,23 +12,13 @@
 
 -record(state, {next_eid=0}).
 
-start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link() -> gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+stop() -> gen_server:cast(?MODULE, stop).
 
-stop() ->
-	gen_server:cast(?MODULE, stop).
+register_player(Player) -> gen_server:call(?MODULE, {register_player, Player, self()}).
+delete_player(Player) when is_record(Player, player) orelse is_list(Player) -> gen_server:call(?MODULE, {delete_player, Player}).
 
-%% has to be called from logic process!
-register_player(Player) ->
-	gen_server:call(?MODULE, {register_player, Player, self()}).
-
-%% Player = player name or record
-delete_player(Player) when is_record(Player, player) orelse is_list(Player) ->
-	gen_server:call(?MODULE, {delete_player, Player}).
-
-%% has to be called from logic process!
-register_dropped_item(Entity) when is_record(Entity, entity)->
-	gen_server:call(?MODULE, {register_dropped_item, Entity, self()}).
+register_dropped_item(Entity, Velocity) when is_record(Entity, entity)-> gen_server:call(?MODULE, {register_dropped_item, Entity, Velocity, self()}).
 
 move_entity(Eid, {_X, _Y, _Z, _Pitch, _Yaw}=NewLocation) ->
 	case entity_details(Eid) of
@@ -119,11 +109,13 @@ handle_call({delete_player, Player}, _From, State) when is_record(Player, player
 		{aborted, _} -> {reply, not_found, State}
 	end;
 
-handle_call({register_dropped_item, Entity, Logic}, _From, State) ->
+% register_dropped_item
+handle_call({register_dropped_item, Entity, InitialVelocity, Logic}, _From, State) ->
 	Eid = State#state.next_eid,
 	NewEntity = Entity#entity{eid=Eid, logic=Logic},
 	{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(NewEntity) end),
 	broadcast({new_entity, NewEntity}),
+    broadcast({set_entity_speed, NewEntity, InitialVelocity}),
 	{reply, NewEntity, State#state{next_eid=Eid+1}};
 
 handle_call(Message, _From, State) ->
