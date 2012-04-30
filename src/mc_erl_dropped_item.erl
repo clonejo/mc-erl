@@ -59,7 +59,7 @@ handle_cast(Req, State) ->
 	MyEid = MyEntity#entity.eid,
 	RetState = case Req of
 		{tick, Tick} ->
-            case State#state.moving of
+            NewState = case State#state.moving of
                 true ->
                     {VX, VY, VZ} = State#state.velocity,
                     {X, Y, Z, _, _} = MyEntity#entity.location,
@@ -84,7 +84,13 @@ handle_cast(Req, State) ->
                 
                 false ->
                     State
-            end;
+            end,
+            UpdatedLocation = NewState#state.entity#entity.location,
+            if
+                (Tick rem 20) == 0 -> mc_erl_entity_manager:move_entity(MyEid, UpdatedLocation);
+                true -> ok
+            end,
+            NewState;
 		
 		% don't use these for movement simulation, register for events at chunk_manager
 		{block_delta, _} -> State;
