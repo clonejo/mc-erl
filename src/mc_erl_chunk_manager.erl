@@ -110,15 +110,13 @@ get_block({_X, Y, _Z}=Pos) ->
             % if it can possibly have something, find it out
             % starting with block id
             {RX, RY, RZ} = coord_within_chunk(Pos),
-            ByteOffset = RX+RZ*16+RY*256,
-            {_Head, Rest} = split_binary(Chunk#chunk_data.types, ByteOffset),
-            
-            {<<BlockId>>, _Tail} = split_binary(Rest, 1),
+            ByteOffset = (RX+RZ*16+RY*256),
+            BitOffset = ByteOffset * 8,
+            <<_:BitOffset, BlockId:8, _/binary>> = Chunk#chunk_data.types,
             
             % and now metadata
-            NibbleOffset = floor(ByteOffset/2),
-            {_MetaHead, MetaRest} = split_binary(Chunk#chunk_data.metadata, NibbleOffset),
-            {<<M1:4, M2:4>>, _MetaTail} = split_binary(MetaRest, 1), % i hate nibble packing
+            NibbleBitOffset = floor(ByteOffset/2)*8,
+            <<_:NibbleBitOffset, M1:4, M2:4, _/binary>> = Chunk#chunk_data.metadata,
             
             MetadataValue = case ByteOffset rem 2 of
                 0 -> M2;
