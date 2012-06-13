@@ -9,12 +9,12 @@ You'll need an erlang compiler/vm! When you are on Linux, you can install Erlang
 2. $ ./rebar compile
 
 ## Server
-As we now use Mnesia for storing data permanently, it has to be set up first. Always keep in mind that the table definitions can change on updates, introducing incompabilities.
+As we now use Mnesia for storing data permanently, it has to be set up first. Always keep in mind that the table definitions can change on updates, introducing incompabilities. Use the .bat files on Windows.
 
-    $ ./mc_erl setup
+    $ ./setup.sh
 
 ### Starting:
-    $ ./mc_erl run
+    $ ./run.sh
 
 ### Stopping:
 Press Ctrl+C
@@ -22,5 +22,5 @@ Press Ctrl+C
 The server runs at port 25565 (default). The port and other options can be set in "server.conf", restart the server for changes taking effect.
 
 ## PS:
-The Erlang shell can be left with "q().".
+The Erlang shell can be left with "q().", which shuts down the server.
 
