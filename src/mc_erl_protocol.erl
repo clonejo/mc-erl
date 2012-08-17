@@ -6,26 +6,6 @@
 
 -define(timeout, 10000).
 
--define(enchantable, [
-	16#103, %Flint and steel
-	16#105, %Bow
-	16#15A, %Fishing rod
-	16#167, %Shears
-	%TOOLS
-	%sword, shovel, pickaxe, axe, hoe
-	16#10C, 16#10D, 16#10E, 16#10F, 16#122, %WOOD
-	16#110, 16#111, 16#112, 16#113, 16#123, %STONE
-	16#10B, 16#100, 16#101, 16#102, 16#124, %IRON
-	16#114, 16#115, 16#116, 16#117, 16#125, %DIAMOND
-	16#11B, 16#11C, 16#11D, 16#11E, 16#126, %GOLD
-	%ARMOUR
-	%helmet, chestplate, leggings, boots
-	16#12A, 16#12B, 16#12C, 16#12D, %LEATHER
-	16#12E, 16#12F, 16#130, 16#131, %CHAIN
-	16#132, 16#133, 16#134, 16#135, %IRON
-	16#136, 16#137, 16#138, 16#139, %DIAMOND
-	16#13A, 16#13B, 16#13C, 16#13D]). %GOLD
-
 % Protocol weirdness handling
 to_absint(Value) when is_float(Value) orelse is_integer(Value) ->
 	trunc(Value*32).
@@ -42,6 +22,7 @@ decode_packet(Socket) ->
 	Recv = gen_tcp:recv(Socket, 1),
 	case Recv of
 		{ok, <<Id>>} ->
+			%io:format("[~p] received packet id: ~p~n", [?MODULE, Id]),
 			{Id, Name, TypeParamList} = mc_erl_packets:get_by_id(Id),
 			ParamList = decode_param_list(Socket, TypeParamList, []),
 			{ok, {Name, ParamList}};
@@ -74,6 +55,7 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			multi_block_change_data -> read_multi_block_change_data(Socket);
 			coordinate_offsets -> read_coordinate_offsets(Socket);
 			projectile_data -> read_projectile_data(Socket);
+			entity_ids -> read_entity_ids(Socket);
 			_ ->
 				io:format("[~w] unknown datatype: ~p~n", [?MODULE, TypeParam]),
 				{error, unknown_datatype, TypeParam}
@@ -173,17 +155,12 @@ read_slot(Socket) ->
 		ItemId ->
 			ItemCount = read_byte(Socket),
 			Metadata = read_short(Socket),
-			case lists:member(ItemId, ?enchantable) of
-				true ->
-					case read_short(Socket) of
-						-1 ->
-							{ItemId, ItemCount, Metadata, []};
-						BinLength ->
-							{ok, BinEnchantments} = gen_tcp:recv(Socket, BinLength, ?timeout),
-							{ItemId, ItemCount, Metadata, read_enchantments(BinEnchantments)}
-					end;
-				false -> 
-					{ItemId, ItemCount, Metadata}
+			case read_short(Socket) of
+				-1 ->
+					{ItemId, ItemCount, Metadata, []};
+				BinLength ->
+					{ok, BinEnchantments} = gen_tcp:recv(Socket, BinLength, ?timeout),
+					{ItemId, ItemCount, Metadata, read_enchantments(BinEnchantments)}
 			end
 	end.
 
@@ -223,7 +200,6 @@ read_chunk_data(Socket) ->
 	ChunksCount = lists:sum(ContainedChunks),
 	_AddChunks = read_bit_set(Socket, 2),
 	Length = read_int(Socket),
-	_ = read_int(Socket),
 	{ok, Bin} = gen_tcp:recv(Socket, Length, ?timeout),
 	Uncompressed = zlib:uncompress(Bin),
 	{TypeBin, Rest1} = split_binary(Uncompressed, 4096*ChunksCount),
@@ -285,12 +261,17 @@ read_coordinate_offsets(Socket) ->
 	{ok, Bin} = gen_tcp:recv(Socket, 3*OffsetsNum, ?timeout),
 	{raw, OffsetsNum, Bin}.
 
+read_entity_ids(Socket) ->
+    IdsNum = read_byte(Socket),
+    {entity_ids, [ read_int(Socket) || _ <- lists:seq(1, IdsNum) ]}.
+
 % ======================================================================
 % encoding
 % ======================================================================
 
 encode_packet({Name, ParamList}) ->
 	{Id, Name, TypeParamList} = mc_erl_packets:get_by_name(Name),
+	%io:format("[~p] sending packet id: ~p~n", [?MODULE, Id]),
 	case length(TypeParamList) of
 		0 ->
 			<<Id>>;
@@ -325,6 +306,7 @@ encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 		multi_block_change_data -> encode_multi_block_change_data(P);
 		coordinate_offsets -> encode_coordinate_offsets(P);
 		projectile_data -> encode_projectile_data(P);
+		entity_ids -> encode_entity_ids(P);
 		X -> {error, unknown_datatype, X}
 	end,
 	encode_param_list(ParamList, TypeParamList, [O|Output]).
@@ -446,6 +428,9 @@ encode_slots([], Output) ->
 
 encode_slots([Slot|Rest], Output) ->
 	encode_slots(Rest, [encode_slot(Slot)|Output]).
+
+encode_chunk_data(unload) ->
+	[encode_bool(false), encode_short(0), encode_short(0), encode_int(0)];
 			
 encode_chunk_data({raw, Bin}) ->
 	[encode_int(byte_size(Bin)), encode_int(0), Bin];
@@ -468,7 +453,7 @@ encode_chunk_data({parsed, Column=#chunk_column_data{}}) ->
 	CompressedData = zlib:compress(BinData),
 	
 	[encode_bool(FullColumn), encode_bit_set(ContainedChunks, 2), encode_bit_set(AddChunks, 2),
-		encode_int(byte_size(CompressedData)), encode_int(0), CompressedData].
+		encode_int(byte_size(CompressedData)), CompressedData].
 
 encode_multi_block_change_datasets(BlockDelta) -> encode_multi_block_change_datasets(BlockDelta, []).
 
@@ -488,5 +473,7 @@ encode_projectile_data({projectile, none}) ->
 encode_projectile_data({projectile, {Owner, SpeedX, SpeedY, SpeedZ}}) ->
 	[encode_int(Owner), encode_short(SpeedX), encode_short(SpeedY), encode_short(SpeedZ)].
 
+encode_entity_ids({entity_ids, IdList}) ->
+    list_to_binary([encode_byte(length(IdList)), [ encode_int(Id) || Id <- IdList ]]).
 
 

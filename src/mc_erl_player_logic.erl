@@ -21,7 +21,7 @@ init([Writer, Name]) ->
 	process_flag(trap_exit, true),
 	{ok, #state{writer=Writer, player=#player{name=Name}}}.
 
-terminate(_Reason, State) ->
+terminate(_Reason, State) when is_record(State, state) ->
 	State#state.writer ! stop,
 	case State#state.logged_in of
 		true ->
@@ -63,10 +63,11 @@ handle_cast(Req, State) ->
 								creative -> 1;
 								survival -> 0
 							end,
-							write(Writer, {login_request, [NewPlayer#player.eid, "", "DEFAULT", Mode, 0, 0, 0, 100]}),
+							write(Writer, {login_request, [NewPlayer#player.eid, "DEFAULT", Mode, 0, 0, 0, 100]}),
 							send_inventory(State),
 							%debug:
-							NewState = update_slot(State#state{player=NewPlayer}, 40, {replace, {3, 10, 0}}),
+							NewState = update_slot(State#state{player=NewPlayer}, 40, {replace, {3, 10, 0, []}}),
+							%NewState = State,
 							write(Writer, {spawn_position, [0, 0, 0]}),
 							{X, Y, Z, Yaw, Pitch} = StartPos = State#state.pos,
 							
@@ -88,6 +89,9 @@ handle_cast(Req, State) ->
 			end;
 			
 		{packet, {keep_alive, [_]}} ->
+			State;
+		
+		{packet, {locale_view_distance,[_,_,_,_]}} ->
 			State;
 			
 		{packet, {player, _OnGround}} ->
@@ -122,6 +126,7 @@ handle_cast(Req, State) ->
 			NewPlayer = MyPlayer#player{selected_slot=N},
 			State#state{player=NewPlayer};
 		
+		% started digging
 		{packet, {player_digging, [0, X, Y, Z, _]}} ->
 			case MyPlayer#player.mode of
 				creative -> mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0});
@@ -129,40 +134,42 @@ handle_cast(Req, State) ->
 			end,
 			State;
 		
+		% cancelled digging
+		{packet, {player_digging, [1, _X, _Y, _Z, _]}} ->
+			State;
+		
+		% finished digging
 		{packet, {player_digging, [2, X, Y, Z, _]}} ->
 			case MyPlayer#player.mode of
-				creative -> void;
+				creative -> State;
 				survival ->
                     {BlockId, Metadata} = mc_erl_chunk_manager:get_block({X, Y, Z}),
-                    mc_erl_dropped_item:spawn({X, Y, Z}, {0.1, 0, 0}, {BlockId, 1, Metadata}),
-                    mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0})
-			end,
+                    %mc_erl_dropped_item:spawn({X, Y, Z}, {0.1, 0, 0}, {BlockId, 1, Metadata}),
+                    mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
+                    {NewState, Rest} = inventory_add(State, {BlockId, 1, Metadata, []}),
+                    NewState
+			end;
+		
+		{packet, {player_block_placement, [-1, 255, -1, -1, {_BlockId, _Count, _Metadata, []}, _, _, _]}} ->
+			% handle right click when no block selected
+			% handle held item state update (eating food etc.) TODO: recheck this
 			State;
 		
-		{packet, {player_block_placement, [-1, -1, -1, -1, {_BlockId, _Count, _Metadata}]}} ->
-			% handle held item state update (eating food etc.)
-			State;
-		
-		{packet, {player_block_placement, [_, _, _, _, empty]}} ->
+		{packet, {player_block_placement, [_, _, _, _, empty, _, _, _]}} ->
 			State;
 			
-		{packet, {player_block_placement, [X, Y, Z, Direction, {BlockId, _Count, Metadata}]}} when BlockId < 256 ->
-			case MyPlayer#player.mode of
-				creative ->
+		{packet, {player_block_placement, [X, Y, Z, Direction, {_, _, _, _}, _, _, _]}} ->
+			SelectedSlot = MyPlayer#player.selected_slot+36,
+			Inv = MyPlayer#player.inventory,
+			case array:get(SelectedSlot, Inv) of
+				empty ->
+					update_slot(State, SelectedSlot, empty);
+				{BlockId, _Count, Metadata, _Enchantments} ->
 					case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos) of
-						ok -> ok;
-						{error, forbidden_block_id, {RX, RY, RZ}} ->
-							write(Writer, {block_change, [RX, RY, RZ, 0, 0]})
-					end,
-					State;
-				survival ->
-					SelectedSlot = MyPlayer#player.selected_slot+36,
-					Inv = MyPlayer#player.inventory,
-					case array:get(SelectedSlot, Inv) of
-						{BlockId, _, Metadata} ->
-							mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos),
+						ok ->
 							update_slot(State, SelectedSlot, reduce);
-						_ -> {disconnect, {cheating, wrong_slot}, State}
+						{error, forbidden_block_id, {_RX, _RY, _RZ}} ->
+							io:format("[~s] ~s tried to set a forbidden block (~p)~n", [?MODULE, MyPlayer#player.name, BlockId])
 					end
 			end;
 		
@@ -252,34 +259,34 @@ handle_cast(Req, State) ->
 							CSlot = get_slot(State, Slot),
 							case CSlot of
 								empty -> State;
-								{HoldingId, AllCount, HoldingMetadata} ->
+								{HoldingId, AllCount, HoldingMetadata, HoldingEntchantments} ->
 									HoldingCount = trunc((AllCount+1)/2),
 									LeftCount = trunc(AllCount/2),
 									LeftItem = if
 										LeftCount == 0 -> empty;
-										true -> {HoldingId, LeftCount, HoldingMetadata}
+										true -> {HoldingId, LeftCount, HoldingMetadata, HoldingEntchantments}
 									end,
 									NewState = update_slot(State, Slot, {replace, LeftItem}),
-									Holding = {HoldingId, HoldingCount, HoldingMetadata},
+									Holding = {HoldingId, HoldingCount, HoldingMetadata, HoldingEntchantments},
 									write(Writer, {transaction, [0, TransactionId, true]}),
 									NewState#state{cursor_item=Holding}
 							end;
 									
 							
-						{BlockId, Count, BlockMetadata} ->
+						{BlockId, Count, BlockMetadata, HoldingEntchantments} ->
 							SlotBelow = get_slot(State, Slot),
 							case SlotBelow of
 								empty ->
 									NewCursorCount = Count - 1,
-									NewState = update_slot(State, Slot, {replace, {BlockId, 1, BlockMetadata}}),
+									NewState = update_slot(State, Slot, {replace, {BlockId, 1, BlockMetadata, HoldingEntchantments}}),
 									write(Writer, {transaction, [0, TransactionId, true]}),
 									if
 										NewCursorCount == 0 -> NewCItem = empty;
-										true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata}
+										true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata, HoldingEntchantments}
 									end,
 									NewState#state{cursor_item=NewCItem};
 									
-								{BelowId, BelowCount, BelowMetadata} ->
+								{BelowId, BelowCount, BelowMetadata, HoldingEntchantments} ->
 									if
 										(BelowId == BlockId) andalso (BelowMetadata == BlockMetadata) ->
 											if
@@ -290,11 +297,11 @@ handle_cast(Req, State) ->
 													NewCursorCount = Count - 1,
 													if
 														NewCursorCount == 0 -> NewCItem = empty;
-														true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata}
+														true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata, HoldingEntchantments}
 													end,
 													NewBelowCount = BelowCount + 1,
 													write(Writer, {transaction, [0, TransactionId, true]}),
-													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata}}),
+													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata, HoldingEntchantments}}),
 													NewState#state{cursor_item=NewCItem}
 											end;
 										
@@ -552,8 +559,8 @@ update_slot(State, SlotNo, Action) ->
 		reduce ->
 			case array:get(SlotNo, Inv) of
 				empty -> empty;
-				{_BlockId, 1, _Metadata} -> empty;
-				{BlockId, Count, Metadata} -> {BlockId, Count-1, Metadata}
+				{_BlockId, 1, _Metadata, []} -> empty;
+				{BlockId, Count, Metadata, Enchantments} -> {BlockId, Count-1, Metadata, Enchantments}
 			end;
 		{replace, Slot} -> Slot
 	end,
@@ -562,6 +569,57 @@ update_slot(State, SlotNo, Action) ->
 	State#state{player=Player#player{inventory=NewInv}}.
 
 get_slot(State, SlotNo) -> array:get(SlotNo, State#state.player#player.inventory).
+
+inventory_add(State, {BlockId, Count, Metadata, Enchantments}=Slot) when is_record(State, state) ->
+	{Inventory, Rest} = inventory_add(State#state.writer, State#state.player#player.inventory, 9, Slot),
+	{State#state{player=State#state.player#player{inventory=Inventory}}, Rest}.
+
+inventory_add(Writer, Inventory, 45, Rest) ->
+	inventory_add_to_free_slot(Writer, Inventory, 9, Rest);
+inventory_add(Writer, Inventory, SlotNo, {BlockId, Count, Metadata, Enchantments}=Slot) ->
+	MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
+	case array:get(SlotNo, Inventory) of
+		{BlockId, OldCount, Metadata, Enchantments} ->
+			if
+				OldCount >= MaxStack ->
+					inventory_add(Writer, Inventory, SlotNo+1, Slot);
+				OldCount+Count > MaxStack ->
+					NewSlot = {BlockId, MaxStack, Metadata, Enchantments},
+					NewInv = array:set(SlotNo, NewSlot, Inventory),
+					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
+					RestCount = OldCount+Count - MaxStack,
+					inventory_add(Writer, NewInv, SlotNo+1, {BlockId, RestCount, Metadata, Enchantments});
+				true ->
+					NewSlot = {BlockId, OldCount+Count, Metadata, Enchantments},
+					NewInv = array:set(SlotNo, NewSlot, Inventory),
+					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
+					{NewInv, empty}
+			end;
+		_ ->
+			inventory_add(Writer, Inventory, SlotNo+1, Slot)
+	end.
+inventory_add_to_free_slot(Writer, Inventory, 45, Rest) ->
+	{Inventory, Rest};
+inventory_add_to_free_slot(Writer, Inventory, SlotNo, {BlockId, Count, Metadata, Enchantments}=Slot) ->
+	MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
+	case array:get(SlotNo, Inventory) of
+		empty ->
+			if
+				Count > MaxStack ->
+					NewSlot = {BlockId, MaxStack, Metadata, Enchantments},
+					NewInv = array:set(SlotNo, NewSlot, Inventory),
+					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
+					RestCount = Count - MaxStack,
+					inventory_add_to_free_slot(Writer, NewInv, SlotNo+1, {BlockId, RestCount, Metadata, Enchantments});
+				true ->
+					NewSlot = {BlockId, Count, Metadata, Enchantments},
+					NewInv = array:set(SlotNo, NewSlot, Inventory),
+					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
+					{NewInv, empty}
+			end;
+		_ ->
+			inventory_add_to_free_slot(Writer, Inventory, SlotNo+1, Slot)
+	end.
 
 % ==== Checks if location is in visible range
 in_range({X, Y, Z}, State) ->
@@ -580,7 +638,6 @@ check_chunks(Writer, PlayerChunk, LoadedChunks) ->
 
 load_chunks(_Writer, []) -> ok;
 load_chunks(Writer, [{X, Z}|Rest]) ->
-	write(Writer, {pre_chunk, [X, Z, true]}),
 	ChunkData = mc_erl_chunk_manager:get_chunk({X, Z}),
 	write(Writer, {map_chunk, [X, Z, {parsed, ChunkData}]}),
 	load_chunks(Writer, Rest);
@@ -590,6 +647,6 @@ load_chunks(Writer, ChunksSet) ->
 
 unload_chunks(_Writer, []) -> ok;
 unload_chunks(Writer, [{X, Z}|Rest]) ->
-	write(Writer, {pre_chunk, [X, Z, false]}),
+	write(Writer, {map_chunk, [X, Z, unload]}),
 	unload_chunks(Writer, Rest).
 

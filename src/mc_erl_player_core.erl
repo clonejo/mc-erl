@@ -12,30 +12,25 @@ read(Socket) ->
 			%io:format("[~s] Nope, just wanted to ping~n", [?MODULE]),
 			send(Socket, {disconnect,[lists:flatten([
 				mc_erl_config:get(description, []),167,
-				integer_to_list(mc_erl_entity_manager:player_count()),167,"100"])]});
-			%gen_tcp:close(Socket);
+				integer_to_list(mc_erl_entity_manager:player_count()),167,"100"])]}),
+			gen_tcp:close(Socket);
 
-		{handshake, [S]} ->
-			{Name,_} = lists:split(string:str(S,";")-1,S),
+		{handshake, [39, Name, _Host, _Port]} ->
 			io:format("[~s] Player joining: ~s~n", [?MODULE, Name]),
-			send(Socket, {handshake, ["-"]}),
-			
-			% last packet to read sequentially and then we're going full asynchronous mode
-			{ok, {login_request, [29, Name, "", 0, 0, 0, 0, 0]}}
-				= mc_erl_protocol:decode_packet(Socket),
 			
 			Writer = proc_lib:spawn_link(fun() -> async_writer(Socket) end),
 			
 			Logic = mc_erl_player_logic:start_logic(Writer, Name),
 			mc_erl_player_logic:packet(Logic, login_sequence),
 			
-			proc_lib:spawn_link(fun() -> keep_alive_sender(Socket) end),
+			proc_lib:spawn_link(fun() -> process_flag(trap_exit, true), keep_alive_sender(Socket) end),
 			read(Socket, Logic)
 	end.
 
 read(Socket, Logic) when is_pid(Logic) ->
 	case mc_erl_protocol:decode_packet(Socket) of
 		{error,closed} ->
+			%io:format("[~s] socket is closed~n", [?MODULE]),
 			mc_erl_player_logic:packet(Logic, net_disconnect);
 
 		{ok, Packet} ->
@@ -46,8 +41,11 @@ read(Socket, Logic) when is_pid(Logic) ->
 % dummy sender, doesn't check for reply
 keep_alive_sender(Socket) ->
 	send(Socket, {keep_alive,  [0]}),
-	receive after 1000 -> ok end,
-	keep_alive_sender(Socket).
+	receive
+		{'EXIT', _, _} -> ok
+		after 1000 ->
+			keep_alive_sender(Socket)
+	end.
 
 % asynchronous writer to pass on to logic
 async_writer(Socket) ->

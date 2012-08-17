@@ -6,16 +6,15 @@ get_by_id(Id) ->
 		0 ->
 			{0, keep_alive, [int]};
 		1 ->
-			{1, login_request, [int, string, string, int, int,
-			                    byte, ubyte, ubyte]};
+			{1, login_request, [int, string, byte, byte, byte, ubyte, ubyte]};
 		2 ->
-			{2, handshake, [string]};
+			{2, handshake, [byte, string, string, int]};
 		3 ->
 			{3, chat_message, [string]};
 		4 ->
 			{4, time_update, [long]};
 		5 ->
-			{5, entity_equipment, [int, short, short, short]};
+			{5, entity_equipment, [int, short, slot]};
 		6 ->
 			{6, spawn_position, [int, int, int]};
 		7 ->
@@ -36,7 +35,7 @@ get_by_id(Id) ->
 		14 ->
 			{14, player_digging, [byte, int, byte, int, byte]};
 		15 ->
-			{15, player_block_placement, [int, byte, int, byte, slot]};
+			{15, player_block_placement, [int, ubyte, int, byte, slot, byte, byte, byte]};
 		16 ->
 			{16, holding_change, [short]};
 		17 ->
@@ -47,7 +46,7 @@ get_by_id(Id) ->
 			{19, entity_action, [int, byte]};
 		20 ->
 			{20, named_entity_spawn, [int, string, abs_int, abs_int, abs_int,
-			                          byte, byte, short]};
+			                          byte, byte, short, metadata]};
 		21 ->
 			{21, pickup_spawn, [int, short, byte, short,
 			                    abs_int, abs_int, abs_int, byte, byte, byte]};
@@ -56,7 +55,7 @@ get_by_id(Id) ->
 		23 -> % no fireballs supported!
 			{23, add_object, [int, byte, abs_int, abs_int, abs_int, projectile_data]}; 
 		24 ->
-			{24, mob_spawn, [int, byte, abs_int, abs_int, abs_int, byte, byte, byte, metadata]};
+			{24, mob_spawn, [int, byte, abs_int, abs_int, abs_int, byte, byte, byte, short, short, short, metadata]};
 		26 ->
 			{26, experience_orb, [int, int, int, int, short]};
 		28 ->
@@ -85,20 +84,24 @@ get_by_id(Id) ->
 			{42, remove_entity_effect, [int, byte]};
 		43 ->
 			{43, experience, [float, short, short]};
-		50 ->
-			{50, pre_chunk, [int, int, bool]};
 		51 ->
 			{51, map_chunk, [int, int, chunk_data]};
 		52 ->
 			{52, multi_block_change, [int, int, multi_block_change_data]};
 		53 ->
-			{53, block_change, [int, byte, int, byte, byte]};
+			{53, block_change, [int, byte, int, short, byte]};
 		54 ->
-			{54, block_action, [int, short, int, byte, byte]};
+			{54, block_action, [int, short, int, byte, byte, short]};
+		55 ->
+			{55, block_break_animation, [int, int, int, int, byte]};
+		56 ->
+			{56, map_chunk_bulk, [chunk_bulk]};
 		60 ->
-			{60, explosion, [double, double, double, float, coordinate_offsets]};
+			{60, explosion, [double, double, double, float, coordinate_offsets, float, float, float]};
 		61 ->
 			{61, sound_particle_effect, [int, int, byte, int, int]};
+		62 ->
+			{62, named_sound_effect, [string, int, int, int, float, byte]};
 		70 ->
 			{70, new_invalid_state, [byte, byte]};
 		71 ->
@@ -124,13 +127,25 @@ get_by_id(Id) ->
 		130 ->
 			{130, update_sign, [int, short, int, string, string, string, string]};
 		132 ->
-			{132, update_tile_entity, [int, short, int, byte, int, int, int]};
+			{132, update_tile_entity, [int, short, int, byte, short]}; % TODO!
 		200 ->
 			{200, increment_statistic, [int, byte]};
 		201 ->
 			{201, player_list_item, [string, bool, short]};
 		202 ->
-			{202, player_abilities, [bool, bool, bool, bool]};
+			{202, player_abilities, [byte, byte, byte]};
+		203 ->
+			{203, tab_complete, [string]};
+		204 ->
+			{204, locale_view_distance, [string, byte, byte, byte]};
+		205 ->
+			{205, client_statuses, [byte]};
+		250 ->
+			{250, plugin_message, [string, {array, short, byte}]};
+		252 ->
+			{252, encryption_key_response, [{array, short, byte}, {array, short, byte}]};
+		253 ->
+			{253, encryption_key_request, [string, {array, short, byte}, {array, short, byte}]};
 		254 ->
 			{254, server_list_ping, []};
 		255 ->
@@ -180,7 +195,6 @@ get_by_name(Name) ->
 		entity_effect -> 41;
 		remove_entity_effect -> 42;
 		experience -> 43;
-		pre_chunk -> 50;
 		map_chunk -> 51;
 		multi_block_change -> 52;
 		block_change -> 53;
@@ -203,6 +217,7 @@ get_by_name(Name) ->
 		increment_statistic -> 200;
 		player_list_item -> 201;
 		player_abilities -> 202;
+		client_statuses -> 205;
 		server_list_ping -> 254;
 		disconnect -> 255;
 		X ->
