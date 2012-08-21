@@ -61,7 +61,7 @@ get_by_id(Id) ->
 		28 ->
 			{28, entity_velocity, [int, short, short, short]};
 		29 ->
-			{29, destroy_entity, [int]};
+			{29, destroy_entity, [{array, byte, int}]};
 		31 ->
 			{31, entity_move, [int, abs_byte, abs_byte, abs_byte]};
 		32 ->

@@ -35,7 +35,10 @@ decode_param_list(_Socket, [], Output) ->
 
 decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 	decode_param_list(Socket, TypeParamList,
-		[case TypeParam of
+		[read_value(Socket, TypeParam)|Output]).
+
+read_value(Socket, Type) ->
+	case Type of
 			bool -> read_bool(Socket);
 			byte -> read_byte(Socket);
 			ubyte -> read_ubyte(Socket);
@@ -55,11 +58,11 @@ decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
 			multi_block_change_data -> read_multi_block_change_data(Socket);
 			coordinate_offsets -> read_coordinate_offsets(Socket);
 			projectile_data -> read_projectile_data(Socket);
-			entity_ids -> read_entity_ids(Socket);
+			{array, CountType, PayloadType} -> read_array(Socket, CountType, PayloadType);
 			_ ->
-				io:format("[~w] unknown datatype: ~p~n", [?MODULE, TypeParam]),
-				{error, unknown_datatype, TypeParam}
-		end|Output]).
+				io:format("[~w] unknown datatype: ~p~n", [?MODULE, Type]),
+				{error, unknown_datatype, Type}
+	end.
 
 read_bool(Socket) ->
 	{ok, <<N:8>>} = gen_tcp:recv(Socket, 1, ?timeout),
@@ -261,9 +264,9 @@ read_coordinate_offsets(Socket) ->
 	{ok, Bin} = gen_tcp:recv(Socket, 3*OffsetsNum, ?timeout),
 	{raw, OffsetsNum, Bin}.
 
-read_entity_ids(Socket) ->
-    IdsNum = read_byte(Socket),
-    {entity_ids, [ read_int(Socket) || _ <- lists:seq(1, IdsNum) ]}.
+read_array(Socket, CountType, PayloadType) ->
+    Num = read_value(Socket, CountType),
+    {entity_ids, [ read_value(Socket, PayloadType) || _ <- lists:seq(1, Num) ]}.
 
 % ======================================================================
 % encoding
@@ -286,7 +289,11 @@ encode_param_list(ParamList, TypeParamList) ->
 encode_param_list([], [], Output) ->
 	list_to_binary(lists:reverse(Output));
 encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
-	O = case T of
+	O = encode_value(T, P),
+	encode_param_list(ParamList, TypeParamList, [O|Output]).
+
+encode_value(Type, P) ->
+	case Type of
 		bool -> encode_bool(P);
 		byte -> encode_byte(P);
 		ubyte -> encode_ubyte(P);
@@ -306,10 +313,9 @@ encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 		multi_block_change_data -> encode_multi_block_change_data(P);
 		coordinate_offsets -> encode_coordinate_offsets(P);
 		projectile_data -> encode_projectile_data(P);
-		entity_ids -> encode_entity_ids(P);
+		{array, CountType, PayloadType} -> encode_array(P, CountType, PayloadType);
 		X -> {error, unknown_datatype, X}
-	end,
-	encode_param_list(ParamList, TypeParamList, [O|Output]).
+	end.
 
 encode_bool(N) ->
 	 if
@@ -473,7 +479,7 @@ encode_projectile_data({projectile, none}) ->
 encode_projectile_data({projectile, {Owner, SpeedX, SpeedY, SpeedZ}}) ->
 	[encode_int(Owner), encode_short(SpeedX), encode_short(SpeedY), encode_short(SpeedZ)].
 
-encode_entity_ids({entity_ids, IdList}) ->
-    list_to_binary([encode_byte(length(IdList)), [ encode_int(Id) || Id <- IdList ]]).
+encode_array(PayloadList, CountType, PayloadType) when is_list(PayloadList) ->
+    list_to_binary([encode_value(CountType, length(PayloadList)), [ encode_value(PayloadType, Id) || Id <- PayloadList ]]).
 
 
