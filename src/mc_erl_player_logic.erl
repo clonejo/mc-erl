@@ -482,7 +482,7 @@ spawn_new_entity(Entity, State) when is_record(Entity, entity) ->
 delete_entity(Eid, State) ->
 	case dict:is_key(Eid, State#state.known_entities) of
 		true ->	
-			write(State#state.writer, {destroy_entity, [Eid]}),
+			write(State#state.writer, {destroy_entity, [[Eid]]}),
 			NewKnownEntities = dict:erase(Eid, State#state.known_entities),
 			State#state{known_entities=NewKnownEntities};
 		false ->

@@ -90,7 +90,7 @@ handle_call({register_player, Player, Logic}, _From, State) when is_record(Playe
 
 handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
 	case get_player(Name) of
-		[Player] -> 
+		[Player] ->
 			broadcast({delete_entity, Player#entity.eid}),
             
 			{atomic, ok} = mnesia:transaction(fun() -> mnesia:delete({entity, Player#entity.eid}) end),
@@ -102,7 +102,7 @@ handle_call({delete_player, Name}, _From, State) when is_list(Name) ->
 handle_call({delete_player, Player}, _From, State) when is_record(Player, player) ->
 	case entity_details(Player#player.eid) of
 		undefined -> ok;
-		Entity -> broadcast({delete_entity, Entity})
+		Entity -> broadcast({delete_entity, Entity#entity.eid})
 	end,
 	case mnesia:transaction(fun() -> mnesia:delete({entity, Player#player.eid}) end) of
 		{atomic, ok} ->	{reply, ok, State};
