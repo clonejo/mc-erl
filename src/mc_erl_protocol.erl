@@ -450,7 +450,7 @@ encode_slots([Slot|Rest], Output) ->
 	encode_slots(Rest, [encode_slot(Slot)|Output]).
 
 encode_chunk_data(unload) ->
-	[encode_bool(false), encode_short(0), encode_short(0), encode_int(0)];
+	[encode_bool(true), encode_short(0), encode_short(0), encode_int(0)];
 			
 encode_chunk_data({raw, Bin}) ->
 	[encode_int(byte_size(Bin)), encode_int(0), Bin];
