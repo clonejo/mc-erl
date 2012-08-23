@@ -279,8 +279,20 @@ encode_packet({Name, ParamList}) ->
 		0 ->
 			<<Id>>;
 		_N ->
-			Bin = encode_param_list(ParamList, TypeParamList),
-			list_to_binary([Id, Bin])
+			case encode_param_list(ParamList, TypeParamList) of
+				Bin when is_binary(Bin) ->
+					R = list_to_binary([Id, Bin]),
+					%case Name of
+					%	named_entity_spawn ->
+					%		io:format("[~s] packet ~p, params:~n~p, binary:~n", [?MODULE, Name, ParamList]),
+					%		print_hex(R);
+					%	_ -> ok
+					%end,
+					R;
+				{error, not_enough_arguments, OutputSoFar} ->
+					io:format("[~s] Error encoding ~p: not enough arguments!~nOutput so far: ~p~n", [?MODULE, Name, OutputSoFar]),
+					{error, not_enough_arguments}
+			end
 	end.
 
 encode_param_list(ParamList, TypeParamList) ->
@@ -288,6 +300,8 @@ encode_param_list(ParamList, TypeParamList) ->
 
 encode_param_list([], [], Output) ->
 	list_to_binary(lists:reverse(Output));
+encode_param_list([], _TypeList, Output) ->
+	{error, not_enough_arguments, Output};
 encode_param_list([P|ParamList], [T|TypeParamList], Output) ->
 	O = encode_value(T, P),
 	encode_param_list(ParamList, TypeParamList, [O|Output]).
@@ -318,7 +332,7 @@ encode_value(Type, P) ->
 	end.
 
 encode_bool(N) ->
-	 if
+	 if 
 	 	N =:= true -> <<1>>;
 	 	true -> <<0>>
 	 end.
@@ -481,5 +495,27 @@ encode_projectile_data({projectile, {Owner, SpeedX, SpeedY, SpeedZ}}) ->
 
 encode_array(PayloadList, CountType, PayloadType) when is_list(PayloadList) ->
     list_to_binary([encode_value(CountType, length(PayloadList)), [ encode_value(PayloadType, Id) || Id <- PayloadList ]]).
+
+
+% ======================================================================
+% helper stuff
+% ======================================================================
+
+print_hex(<<>>) -> ok;
+print_hex(Bin) ->
+	{Head, Rest} = binsplit(Bin, 16),
+	Bytes = binary_to_list(Head),
+	[ io:format("~2.16b ", [Byte]) || Byte <- Bytes ],
+	[ io:format("   ") || _ <- lists:seq(1, 16-length(Bytes)) ],
+	[ if B >= 16#21, B =< 16#7e; B >= 16#41, B =< 16#7a -> io:format("~c", [B]); true -> io:format(".") end || B <- Bytes ],
+	io:format("~n"),
+	print_hex(Rest).
+
+binsplit(Bin, Bytes) ->
+	if
+		size(Bin) =< Bytes -> {Bin, <<>>};
+		true -> split_binary(Bin, Bytes)
+	end.
+
 
 

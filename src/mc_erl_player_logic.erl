@@ -467,7 +467,7 @@ spawn_new_entity(Entity, State) when is_record(Entity, entity) ->
 			                case PHolding of
 			                	empty -> 0;
 			                	N when is_integer(N) -> N
-			                end]}),
+			                end, [{0, {byte, 0}}, {1, {short, 300}}, {8, {int, 0}}] ]}),
 			NewKnownEntities = dict:store(Eid, {X, Y, Z, Yaw, Pitch, #ke_metadata{}}, State#state.known_entities),
 			State#state{known_entities=NewKnownEntities};
 		dropped_item ->
