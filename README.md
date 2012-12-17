@@ -24,3 +24,15 @@ The server runs at port 25565 (default). The port and other options can be set i
 ## PS:
 The Erlang shell can be left with "q().", which shuts down the server.
 
+## Feature list
+* compatible to Minecraft 1.3.2
+* see other players
+* see block changes by other players
+* protocol encryption
+
+### Todo
+* update to Minecraft 1.4.2
+* configuration system (see erlconf)
+* plugin system
+* see player sneaking
+* have multiple entity movement routing processes in worlds with high load

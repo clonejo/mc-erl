@@ -4,5 +4,7 @@
 *.dump
 *.log
 *.zip
+key
+key.pub
 ebin/*
 Mnesia.*

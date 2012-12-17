@@ -1,6 +1,6 @@
 -module(mc_erl_protocol).
 
--export([decode_packet/1, encode_packet/1]).
+-export([decode_packet/1, encode_packet/1, decrypt/4, encrypt/4, print_hex/1]).
 
 -include("records.hrl").
 
@@ -13,95 +13,134 @@ to_absint(Value) when is_float(Value) orelse is_integer(Value) ->
 from_absint(Value) when is_integer(Value) ->
 	Value/32.
 
+% ======================================================================
+% cryptography
+% ======================================================================
+
+decrypt(Socket, Key, IVec, BytesCount) ->
+	decrypt(Socket, Key, IVec, BytesCount, []).
+
+decrypt(_Socket, _Key, IVec, 0, Return) ->
+	{list_to_binary(lists:reverse(Return)), IVec};
+decrypt(Socket, Key, IVec, BytesCount, Return) ->
+	{ok, <<Bin>>=B} = gen_tcp:recv(Socket, 1, ?timeout),
+	%io:format("received:~n"),
+	%mc_erl_protocol:print_hex(Bin),
+	Cipher = <<Bin, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>,
+	Text = crypto:aes_cfb_128_decrypt(Key, IVec, Cipher),
+
+	%io:format("decrypted:~n"),
+	%mc_erl_protocol:print_hex(Text),
+
+	<<Ret:1/binary, _/binary>> = Text,
+	decrypt(Socket, Key, gen_ivec(IVec, B), BytesCount-1, [Ret|Return]).
+
+encrypt(Socket, Key, IVec, Text) when is_binary(Text) ->
+	encrypt(Socket, Key, IVec, binary_to_list(Text), []).
+
+encrypt(_, _, IVec, [], Return) ->
+	{lists:reverse(Return), IVec};
+encrypt(Socket, Key, IVec, [Text|Rest], Return) ->
+	Cipher = crypto:aes_cfb_128_encrypt(Key, IVec, <<Text, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>),
+	<<Ret:1/binary, _/binary>> = Cipher,
+	encrypt(Socket, Key, gen_ivec(IVec, Ret), Rest, [Ret|Return]).
+
+
+gen_ivec(OldIVec, Data) when byte_size(Data) =:= 1 ->
+	%L = size(Data),
+	<<_:1/binary, IVPart/binary>> = OldIVec,
+	%io:format("IVPart=~p~n", [IVPart]),
+	list_to_binary([IVPart, Data]).
+
 
 % ======================================================================
 % decoding
 % ======================================================================
 
-decode_packet(Socket) ->
-	Recv = gen_tcp:recv(Socket, 1),
+decode_packet(Reader) ->
+	Recv = get_bytes(Reader, 1),
 	case Recv of
 		{ok, <<Id>>} ->
 			%io:format("[~p] received packet id: ~p~n", [?MODULE, Id]),
 			{Id, Name, TypeParamList} = mc_erl_packets:get_by_id(Id),
-			ParamList = decode_param_list(Socket, TypeParamList, []),
+			ParamList = decode_param_list(Reader, TypeParamList, []),
 			{ok, {Name, ParamList}};
 		{error, Reason} ->
 			{error, Reason}
 	end.
 
-decode_param_list(_Socket, [], Output) ->
+decode_param_list(_Reader, [], Output) ->
 	lists:reverse(Output);
 
-decode_param_list(Socket, [TypeParam|TypeParamList], Output) ->
-	decode_param_list(Socket, TypeParamList,
-		[read_value(Socket, TypeParam)|Output]).
+decode_param_list(Reader, [TypeParam|TypeParamList], Output) ->
+	decode_param_list(Reader, TypeParamList,
+		[read_value(Reader, TypeParam)|Output]).
 
-read_value(Socket, Type) ->
+read_value(Reader, Type) ->
 	case Type of
-			bool -> read_bool(Socket);
-			byte -> read_byte(Socket);
-			ubyte -> read_ubyte(Socket);
-			abs_byte -> from_absint(read_byte(Socket));
-			short -> read_short(Socket);
-			ushort -> read_ushort(Socket);
-			int -> read_int(Socket);
-			abs_int -> from_absint(read_int(Socket));
-			long -> read_long(Socket);
-			float -> read_float(Socket);
-			double -> read_double(Socket);
-			string -> read_string(Socket);
-			metadata -> read_metadata(Socket);
-			slots -> read_slots(Socket);
-			slot -> read_slot(Socket);
-			chunk_data -> read_chunk_data(Socket);
-			multi_block_change_data -> read_multi_block_change_data(Socket);
-			coordinate_offsets -> read_coordinate_offsets(Socket);
-			projectile_data -> read_projectile_data(Socket);
-			{array, CountType, PayloadType} -> read_array(Socket, CountType, PayloadType);
+			bool -> read_bool(Reader);
+			byte -> read_byte(Reader);
+			ubyte -> read_ubyte(Reader);
+			abs_byte -> from_absint(read_byte(Reader));
+			short -> read_short(Reader);
+			ushort -> read_ushort(Reader);
+			int -> read_int(Reader);
+			abs_int -> from_absint(read_int(Reader));
+			long -> read_long(Reader);
+			float -> read_float(Reader);
+			double -> read_double(Reader);
+			string -> read_string(Reader);
+			metadata -> read_metadata(Reader);
+			slots -> read_slots(Reader);
+			slot -> read_slot(Reader);
+			chunk_data -> read_chunk_data(Reader);
+			multi_block_change_data -> read_multi_block_change_data(Reader);
+			coordinate_offsets -> read_coordinate_offsets(Reader);
+			projectile_data -> read_projectile_data(Reader);
+			{array, CountType, PayloadType} -> read_array(Reader, CountType, PayloadType);
 			_ ->
 				io:format("[~w] unknown datatype: ~p~n", [?MODULE, Type]),
 				{error, unknown_datatype, Type}
 	end.
 
-read_bool(Socket) ->
-	{ok, <<N:8>>} = gen_tcp:recv(Socket, 1, ?timeout),
+read_bool(Reader) ->
+	{ok, <<N:8>>} = get_bytes(Reader, 1),
 	N =:= 1.
 
-read_byte(Socket) ->
-	{ok, <<N:8/signed>>} = gen_tcp:recv(Socket, 1, ?timeout),
+read_byte(Reader) ->
+	{ok, <<N:8/signed>>} = get_bytes(Reader, 1),
 	N.
 
-read_ubyte(Socket) ->
-	{ok, <<N:8/unsigned>>} = gen_tcp:recv(Socket, 1, ?timeout),
+read_ubyte(Reader) ->
+	{ok, <<N:8/unsigned>>} = get_bytes(Reader, 1),
 	N.
 
-read_short(Socket) ->
-	{ok, <<N:16/signed>>} = gen_tcp:recv(Socket, 2, ?timeout),
+read_short(Reader) ->
+	{ok, <<N:16/signed>>} = get_bytes(Reader, 2),
 	N.
 
-read_ushort(Socket) ->
-	{ok, <<N:16/unsigned>>} = gen_tcp:recv(Socket, 2, ?timeout),
+read_ushort(Reader) ->
+	{ok, <<N:16/unsigned>>} = get_bytes(Reader, 2),
 	N.
 
-read_int(Socket) ->
-	{ok, <<N:32/signed>>} = gen_tcp:recv(Socket, 4, ?timeout),
+read_int(Reader) ->
+	{ok, <<N:32/signed>>} = get_bytes(Reader, 4),
 	N.
 
-read_long(Socket) ->
-	{ok, <<N:64/signed>>} = gen_tcp:recv(Socket, 8, ?timeout),
+read_long(Reader) ->
+	{ok, <<N:64/signed>>} = get_bytes(Reader, 8),
 	N.
 
-read_float(Socket) ->
-	{ok, <<N:32/float>>} = gen_tcp:recv(Socket, 4, ?timeout),
+read_float(Reader) ->
+	{ok, <<N:32/float>>} = get_bytes(Reader, 4),
 	N.
 
-read_double(Socket) ->
-	{ok, <<N:64/float>>} = gen_tcp:recv(Socket, 8, ?timeout),
+read_double(Reader) ->
+	{ok, <<N:64/float>>} = get_bytes(Reader, 8),
 	N.
 
-read_bit_set(Socket, Bytes) ->
-	{ok, Bin} = gen_tcp:recv(Socket, Bytes, ?timeout),
+read_bit_set(Reader, Bytes) ->
+	{ok, Bin} = get_bytes(Reader, Bytes),
 	parse_bit_set(binary_to_list(Bin), []).
 
 parse_bit_set([], Output) ->
@@ -112,12 +151,12 @@ parse_bit_set([B|Bytes], Output) ->
 	<<B0:1, B1:1, B2:1, B3:1, B4:1, B5:1, B6:1, B7:1>> = <<B>>,
 	parse_bit_set(Bytes, [[B7, B6, B5, B4, B3, B2, B1, B0]|Output]).
 
-read_string(Socket) ->
-	case read_short(Socket) of
+read_string(Reader) ->
+	case read_short(Reader) of
 		0 -> [];
 		Length ->
 			BinLength = Length * 2,
-			{ok, Bin} = gen_tcp:recv(Socket, BinLength, ?timeout),
+			{ok, Bin} = get_bytes(Reader, BinLength),
 			decode_ucs_2(Bin, [])
 	end.
 
@@ -128,41 +167,41 @@ decode_ucs_2(Bin, Output) ->
 	<<N:16>> = No,
 	decode_ucs_2(Rest, [N|Output]).
 
-read_metadata(Socket) ->
-	read_metadata(Socket, []).
+read_metadata(Reader) ->
+	read_metadata(Reader, []).
 
-read_metadata(Socket, Output) ->
-	X = read_ubyte(Socket),
+read_metadata(Reader, Output) ->
+	X = read_ubyte(Reader),
 	case X of
 		127 -> lists:reverse(Output);
 		X ->
 			<<Type:3, Key:5>> = <<X>>,
 			O = {Key, case Type of
-				0 -> {byte, read_byte(Socket)};
-				1 -> {short, read_short(Socket)};
-				2 -> {int, read_int(Socket)};
-				3 -> {float, read_float(Socket)};
-				4 -> {string, read_string(Socket)};
-				5 -> {short_byte_short, [read_short(Socket), read_byte(Socket),
-				                         read_short(Socket)]};
-				6 -> {int_int_int, [read_int(Socket), read_int(Socket),
-				                    read_int(Socket)]};
+				0 -> {byte, read_byte(Reader)};
+				1 -> {short, read_short(Reader)};
+				2 -> {int, read_int(Reader)};
+				3 -> {float, read_float(Reader)};
+				4 -> {string, read_string(Reader)};
+				5 -> {short_byte_short, [read_short(Reader), read_byte(Reader),
+				                         read_short(Reader)]};
+				6 -> {int_int_int, [read_int(Reader), read_int(Reader),
+				                    read_int(Reader)]};
 				N -> {error, unknown_metadata_type, N}
 			end},
-			read_metadata(Socket, [O|Output])
+			read_metadata(Reader, [O|Output])
 	end.
 
-read_slot(Socket) ->
-	case read_short(Socket) of
+read_slot(Reader) ->
+	case read_short(Reader) of
 		-1 -> empty;
 		ItemId ->
-			ItemCount = read_byte(Socket),
-			Metadata = read_short(Socket),
-			case read_short(Socket) of
+			ItemCount = read_byte(Reader),
+			Metadata = read_short(Reader),
+			case read_short(Reader) of
 				-1 ->
 					{ItemId, ItemCount, Metadata, []};
 				BinLength ->
-					{ok, BinEnchantments} = gen_tcp:recv(Socket, BinLength, ?timeout),
+					{ok, BinEnchantments} = get_bytes(Reader, BinLength),
 					{ItemId, ItemCount, Metadata, read_enchantments(BinEnchantments)}
 			end
 	end.
@@ -187,23 +226,23 @@ read_enchantments(BinEnchantments) ->
 		Enchantments).
 	
 
-read_slots(Socket) ->
-	Count = read_short(Socket),
-	read_slots(Socket, [], Count).
+read_slots(Reader) ->
+	Count = read_short(Reader),
+	read_slots(Reader, [], Count).
 
-read_slots(_Socket, Output, 0) ->
+read_slots(_Reader, Output, 0) ->
 	lists:reverse(Output);
 
-read_slots(Socket, Output, RemainingSlots) ->
-	read_slots(Socket, [read_slot(Socket)|Output], RemainingSlots-1).
+read_slots(Reader, Output, RemainingSlots) ->
+	read_slots(Reader, [read_slot(Reader)|Output], RemainingSlots-1).
 
-read_chunk_data(Socket) ->
-	FullColumn = read_bool(Socket),
-	ContainedChunks = read_bit_set(Socket, 2),
+read_chunk_data(Reader) ->
+	FullColumn = read_bool(Reader),
+	ContainedChunks = read_bit_set(Reader, 2),
 	ChunksCount = lists:sum(ContainedChunks),
-	_AddChunks = read_bit_set(Socket, 2),
-	Length = read_int(Socket),
-	{ok, Bin} = gen_tcp:recv(Socket, Length, ?timeout),
+	_AddChunks = read_bit_set(Reader, 2),
+	Length = read_int(Reader),
+	{ok, Bin} = get_bytes(Reader, Length),
 	Uncompressed = zlib:uncompress(Bin),
 	{TypeBin, Rest1} = split_binary(Uncompressed, 4096*ChunksCount),
 	{MetadataBin, Rest2} = split_binary(Rest1, 2048*ChunksCount),
@@ -235,38 +274,42 @@ split_chunks(Bin, ChunkSize, Output) ->
 	split_chunks(Rest, ChunkSize, [Chunk|Output]).
 
 
-read_multi_block_change_data(Socket) ->
-	RecordCount = read_short(Socket),
-	_ = read_int(Socket),
-	{multi_block_change_data, RecordCount, read_multi_block_change_datasets(Socket, RecordCount)}.
+read_multi_block_change_data(Reader) ->
+	RecordCount = read_short(Reader),
+	_ = read_int(Reader),
+	{multi_block_change_data, RecordCount, read_multi_block_change_datasets(Reader, RecordCount)}.
 
-read_multi_block_change_datasets(Socket, RecordCount) -> read_multi_block_change_datasets(Socket, RecordCount, []).
+read_multi_block_change_datasets(Reader, RecordCount) -> read_multi_block_change_datasets(Reader, RecordCount, []).
 
-read_multi_block_change_datasets(_Socket, 0, DeltaBlocks) -> lists:reverse(DeltaBlocks);
-read_multi_block_change_datasets(Socket, RecordCount, DeltaBlocks) ->
-	{ok, Raw} = gen_tcp:recv(Socket, 4, ?timeout),
+read_multi_block_change_datasets(_Reader, 0, DeltaBlocks) -> lists:reverse(DeltaBlocks);
+read_multi_block_change_datasets(Reader, RecordCount, DeltaBlocks) ->
+	{ok, Raw} = get_bytes(Reader, 4),
 	<<DX:4/unsigned, DZ:4/unsigned, DY:8/unsigned, BlockID:12/unsigned, Metadata:4/unsigned>> = Raw,
-	read_multi_block_change_datasets(Socket, RecordCount - 1, [{DX, DZ, DY, BlockID, Metadata}|DeltaBlocks]).
+	read_multi_block_change_datasets(Reader, RecordCount - 1, [{DX, DZ, DY, BlockID, Metadata}|DeltaBlocks]).
 
-read_projectile_data(Socket) ->
-	case read_int(Socket) of
+read_projectile_data(Reader) ->
+	case read_int(Reader) of
 		0 -> {projectile, none};
 		Owner ->
-			SpeedX = read_short(Socket),
-			SpeedY = read_short(Socket),
-			SpeedZ = read_short(Socket),
+			SpeedX = read_short(Reader),
+			SpeedY = read_short(Reader),
+			SpeedZ = read_short(Reader),
 			{projectile, {Owner, SpeedX, SpeedY, SpeedZ}}
 	end.
 
 %% coordinates are also unparsed
-read_coordinate_offsets(Socket) ->
-	OffsetsNum = read_int(Socket),
-	{ok, Bin} = gen_tcp:recv(Socket, 3*OffsetsNum, ?timeout),
+read_coordinate_offsets(Reader) ->
+	OffsetsNum = read_int(Reader),
+	{ok, Bin} = get_bytes(Reader, 3*OffsetsNum),
 	{raw, OffsetsNum, Bin}.
 
-read_array(Socket, CountType, PayloadType) ->
-    Num = read_value(Socket, CountType),
-    {entity_ids, [ read_value(Socket, PayloadType) || _ <- lists:seq(1, Num) ]}.
+read_array(Reader, CountType, binary) ->
+	Num = read_value(Reader, CountType),
+	{ok, Bytes} = get_bytes(Reader, Num),
+	Bytes;
+read_array(Reader, CountType, PayloadType) ->
+    Num = read_value(Reader, CountType),
+    [ read_value(Reader, PayloadType) || _ <- lists:seq(1, Num) ].
 
 % ======================================================================
 % encoding
@@ -283,10 +326,10 @@ encode_packet({Name, ParamList}) ->
 				Bin when is_binary(Bin) ->
 					R = list_to_binary([Id, Bin]),
 					%case Name of
-					%	named_entity_spawn ->
+					%	_ ->
 					%		io:format("[~s] packet ~p, params:~n~p, binary:~n", [?MODULE, Name, ParamList]),
-					%		print_hex(R);
-					%	_ -> ok
+					%		print_hex(R)
+					%	%_ -> ok
 					%end,
 					R;
 				{error, not_enough_arguments, OutputSoFar} ->
@@ -493,6 +536,8 @@ encode_projectile_data({projectile, none}) ->
 encode_projectile_data({projectile, {Owner, SpeedX, SpeedY, SpeedZ}}) ->
 	[encode_int(Owner), encode_short(SpeedX), encode_short(SpeedY), encode_short(SpeedZ)].
 
+encode_array(PayloadList, CountType, binary) when is_binary(PayloadList) ->
+	list_to_binary([encode_value(CountType, byte_size(PayloadList)), PayloadList]);
 encode_array(PayloadList, CountType, PayloadType) when is_list(PayloadList) ->
     list_to_binary([encode_value(CountType, length(PayloadList)), [ encode_value(PayloadType, Id) || Id <- PayloadList ]]).
 
@@ -501,21 +546,28 @@ encode_array(PayloadList, CountType, PayloadType) when is_list(PayloadList) ->
 % helper stuff
 % ======================================================================
 
+% read from decrypting process
+get_bytes(Reader, N) when is_pid(Reader) ->
+	Reader ! {get_bytes, N},
+	receive
+		{bytes, Bin} -> {ok, Bin}
+	end;
+
+% read directly from socket
+get_bytes(Socket, N) ->
+	gen_tcp:recv(Socket, N, ?timeout).
+
 print_hex(<<>>) -> ok;
-print_hex(Bin) ->
-	{Head, Rest} = binsplit(Bin, 16),
-	Bytes = binary_to_list(Head),
+print_hex(Bin) when byte_size(Bin) < 16 ->
+	Bytes = binary_to_list(Bin),
 	[ io:format("~2.16b ", [Byte]) || Byte <- Bytes ],
 	[ io:format("   ") || _ <- lists:seq(1, 16-length(Bytes)) ],
 	[ if B >= 16#21, B =< 16#7e; B >= 16#41, B =< 16#7a -> io:format("~c", [B]); true -> io:format(".") end || B <- Bytes ],
+	io:format("~n");
+print_hex(Bin) ->
+	<<Head:16/binary, Rest/binary>> = Bin,
+	Bytes = binary_to_list(Head),
+	[ io:format("~2.16b ", [Byte]) || Byte <- Bytes ],
+	[ if B >= 16#21, B =< 16#7e; B >= 16#41, B =< 16#7a -> io:format("~c", [B]); true -> io:format(".") end || B <- Bytes ],
 	io:format("~n"),
 	print_hex(Rest).
-
-binsplit(Bin, Bytes) ->
-	if
-		size(Bin) =< Bytes -> {Bin, <<>>};
-		true -> split_binary(Bin, Bytes)
-	end.
-
-
-

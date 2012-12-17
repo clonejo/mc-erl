@@ -143,9 +143,9 @@ get_by_id(Id) ->
 		250 ->
 			{250, plugin_message, [string, {array, short, byte}]};
 		252 ->
-			{252, encryption_key_response, [{array, short, byte}, {array, short, byte}]};
+			{252, encryption_key_response, [{array, short, binary}, {array, short, binary}]};
 		253 ->
-			{253, encryption_key_request, [string, {array, short, byte}, {array, short, byte}]};
+			{253, encryption_key_request, [string, {array, short, binary}, {array, short, binary}]};
 		254 ->
 			{254, server_list_ping, []};
 		255 ->
@@ -218,6 +218,8 @@ get_by_name(Name) ->
 		player_list_item -> 201;
 		player_abilities -> 202;
 		client_statuses -> 205;
+		encryption_key_response -> 252;
+		encryption_key_request -> 253;
 		server_list_ping -> 254;
 		disconnect -> 255;
 		X ->

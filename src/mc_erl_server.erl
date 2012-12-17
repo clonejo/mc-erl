@@ -5,6 +5,10 @@
 
 -include("records.hrl").
 
+-record(state, {listen, public_key, private_key}).
+
+-include_lib("public_key/include/public_key.hrl").
+
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -17,15 +21,19 @@ stop() ->
 
 % gen_server callbacks
 init([]) ->
+	process_flag(trap_exit, true),
 	io:format("[~s] starting~n", [?MODULE]),
+	PublicKey = read_public_key("key.pub"),
+	PrivateKey = read_private_key("key"),
 	Port = mc_erl_config:get(port, 25565),
 	{ok, Listen} = gen_tcp:listen(Port, [binary, {reuseaddr, true}, {active, false},
-	                           {packet, raw}, {nodelay, true}]),
+	                          {packet, raw}, {nodelay, true}]),
 	spawn_link(fun() -> acceptor(Listen) end),
 	spawn_link(fun() -> ticker() end),
-	{ok, Listen}.
+	{ok, #state{listen=Listen, public_key=PublicKey, private_key=PrivateKey}}.
 
 acceptor(Listen) ->
+	io:format("[~s:acceptor] awaiting connection...~n", [?MODULE]),
 	case gen_tcp:accept(Listen) of
 		{ok, Socket} ->
 			gen_server:cast(?MODULE, {new_connection, Socket}),
@@ -41,15 +49,12 @@ ticker(Time) ->
 	ticker(Time+1).
 
 handle_call(Message, _From, State) ->
-	case Message of
-		_ ->
-			io:format("[~s] received call: ~p~n", [?MODULE, Message]),
-			{noreply, State}
-	end.
+	io:format("[~s] received call: ~p~n", [?MODULE, Message]),
+	{noreply, State}.
 
 handle_cast({new_connection, Socket}, State) ->
 	%io:format("[~s] Player connecting...~n", [?MODULE]),
-	Pid = proc_lib:start(mc_erl_player_core, init_player, [Socket]),
+	Pid = proc_lib:start(mc_erl_player_core, init_player, [Socket, State#state.public_key, State#state.private_key]),
 	gen_tcp:controlling_process(Socket, Pid),
 	{noreply, State};
 
@@ -67,13 +72,11 @@ handle_cast(Message, State) ->
 	{noreply, State}.
 
 handle_info(Message, State) ->
-	case Message of
-		_ ->
-			io:format("[~s] received info: ~p~n", [?MODULE, Message]),
-			{noreply, State}
-	end.
+	io:format("[~s] received info: ~p~n", [?MODULE, Message]),
+	{noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+	io:format("[~s] terminated with Reason=~p~n", [?MODULE, Reason]),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -81,6 +84,13 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
+read_public_key(Path) ->
+    {ok, Bin} = file:read_file(Path),
+    [{PublicKey, _}] = public_key:ssh_decode(Bin, public_key),
+    {'SubjectPublicKeyInfo', R, not_encrypted} = public_key:pem_entry_encode('SubjectPublicKeyInfo', PublicKey),
+    R.
 
-
-
+read_private_key(Path) ->
+	{ok, Bin} = file:read_file(Path),
+    [PemEntry] = public_key:pem_decode(Bin),
+    public_key:pem_entry_decode(PemEntry).

@@ -56,13 +56,14 @@ handle_cast(Req, State) ->
 						{error, name_in_use} ->
 							io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
 							write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
-							{disconnect, {multiple_login, State#state.player#player.name}, State}; % different atom here?
+							{disconnect, {multiple_login, State#state.player#player.name}, State};
 		
 						NewPlayer ->
 							Mode = case NewPlayer#player.mode of
 								creative -> 1;
 								survival -> 0
 							end,
+							receive after 2000 -> ok end,
 							write(Writer, {login_request, [NewPlayer#player.eid, "DEFAULT", Mode, 0, 0, 0, 100]}),
 							send_inventory(State),
 							%debug:
@@ -80,6 +81,9 @@ handle_cast(Req, State) ->
 							
 							mc_erl_chat:broadcast(NewPlayer#player.name ++ " has joined."),
 							mc_erl_chat:to_player(self(), mc_erl_config:get(motd, "")),
+
+							%proc_lib:spawn_link(fun() -> process_flag(trap_exit, true), mc_erl_player_core:keep_alive_sender(Writer) end),
+
 							NewState#state{chunks=Chunks, logged_in=true}
 					end;
 				false ->
@@ -631,7 +635,7 @@ check_chunks(Writer, PlayerChunk) ->
 	check_chunks(Writer, PlayerChunk, sets:new()).
 
 check_chunks(Writer, PlayerChunk, LoadedChunks) ->
-	NeededChunks = mc_erl_chunk_manager:chunks_in_range(PlayerChunk, 7),
+	NeededChunks = mc_erl_chunk_manager:chunks_in_range(PlayerChunk, 1),
 	unload_chunks(Writer, sets:to_list(sets:subtract(LoadedChunks, NeededChunks))),
 	load_chunks(Writer, sets:to_list(sets:subtract(NeededChunks, LoadedChunks))),
 	NeededChunks.
