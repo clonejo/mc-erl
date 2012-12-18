@@ -222,7 +222,7 @@ read_enchantments(BinEnchantments) ->
 	lists:map(fun(X) ->
 			[{<<"id">>, {short, Eid}}, {<<"lvl">>, {short, Lvl}}] = X,
 			{_EnchId, EnchName, _AppliedTo, _MaxLvl} = mc_erl_packets:get_enchantment_by_id(Eid),
-			{EnchName, Lvl} end, 
+			{EnchName, Lvl} end,
 		Enchantments).
 	
 
@@ -326,10 +326,10 @@ encode_packet({Name, ParamList}) ->
 				Bin when is_binary(Bin) ->
 					R = list_to_binary([Id, Bin]),
 					%case Name of
-					%	_ ->
+					%	disconnect ->
 					%		io:format("[~s] packet ~p, params:~n~p, binary:~n", [?MODULE, Name, ParamList]),
-					%		print_hex(R)
-					%	%_ -> ok
+					%		print_hex(R);
+					%	_ -> ok
 					%end,
 					R;
 				{error, not_enough_arguments, OutputSoFar} ->
@@ -459,7 +459,7 @@ encode_slot(P) ->
 		empty -> encode_short(-1);
 		{ItemId, Count, Metadata} ->
 			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata)];
+			 encode_short(Metadata), encode_short(-1)];
 		{ItemId, Count, Metadata, []} ->
 			[encode_short(ItemId), encode_byte(Count),
 			 encode_short(Metadata), encode_short(-1)];

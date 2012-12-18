@@ -8,13 +8,17 @@ init_player(Socket, PublicKey, PrivateKey) when is_record(PrivateKey, 'RSAPrivat
 
 	{ok, Packet} = mc_erl_protocol:decode_packet(Socket),
 	case Packet of
-		{server_list_ping, [] } ->
+		{server_list_ping, [1] } ->
 			send(Socket, {disconnect,[lists:flatten([
-				mc_erl_config:get(description, []),167,
-				integer_to_list(mc_erl_entity_manager:player_count()),167,"100"])]}),
+				167, "1", 0,
+				"49", 0,
+				"1.4.5", 0,
+				mc_erl_config:get(description, []), 0,
+				integer_to_list(mc_erl_entity_manager:player_count()), 0,
+				"101"])]}),
 			gen_tcp:close(Socket);
 
-		{handshake, [39, Name, _Host, _Port]} ->
+		{handshake, [49, Name, _Host, _Port]} ->
 			io:format("[~s] Player joining: ~s~n", [?MODULE, Name]),
 			
 			% generate token
@@ -45,7 +49,10 @@ init_player(Socket, PublicKey, PrivateKey) when is_record(PrivateKey, 'RSAPrivat
 				false ->
 					send(Socket, {disconnect, ["You suck."]}),
 					gen_tcp:close(Socket)
-			end
+			end;
+		{handshake, [_, _, _, _]} ->
+			send(Socket, {disconnect, ["You're too oldschool! (Wrong client version.)"]}),
+			gen_tcp:close(Socket)
 	end.
 
 decoder(Reader, Logic) when is_pid(Logic) ->

@@ -359,7 +359,7 @@ handle_cast(Req, State) ->
 		{tick, Tick} ->
 			if
 				(Tick rem 20) == 0 ->
-					write(Writer, {time_update, [Tick]});
+					write(Writer, {time_update, [Tick, Tick]});
 				true -> ok
 			end,
 			FinalState = State#state{last_tick=Tick},
@@ -635,7 +635,7 @@ check_chunks(Writer, PlayerChunk) ->
 	check_chunks(Writer, PlayerChunk, sets:new()).
 
 check_chunks(Writer, PlayerChunk, LoadedChunks) ->
-	NeededChunks = mc_erl_chunk_manager:chunks_in_range(PlayerChunk, 1),
+	NeededChunks = mc_erl_chunk_manager:chunks_in_range(PlayerChunk, 7),
 	unload_chunks(Writer, sets:to_list(sets:subtract(LoadedChunks, NeededChunks))),
 	load_chunks(Writer, sets:to_list(sets:subtract(NeededChunks, LoadedChunks))),
 	NeededChunks.

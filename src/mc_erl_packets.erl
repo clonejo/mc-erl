@@ -12,7 +12,7 @@ get_by_id(Id) ->
 		3 ->
 			{3, chat_message, [string]};
 		4 ->
-			{4, time_update, [long]};
+			{4, time_update, [long, long]};
 		5 ->
 			{5, entity_equipment, [int, short, slot]};
 		6 ->
@@ -48,8 +48,7 @@ get_by_id(Id) ->
 			{20, named_entity_spawn, [int, string, abs_int, abs_int, abs_int,
 			                          byte, byte, short, metadata]};
 		21 ->
-			{21, pickup_spawn, [int, short, byte, short,
-			                    abs_int, abs_int, abs_int, byte, byte, byte]};
+			{21, pickup_spawn, [int, slot, abs_int, abs_int, abs_int, byte, byte, byte]};
 		22 ->
 			{22, collect_item, [int, int]};
 		23 -> % no fireballs supported!
@@ -99,7 +98,7 @@ get_by_id(Id) ->
 		60 ->
 			{60, explosion, [double, double, double, float, coordinate_offsets, float, float, float]};
 		61 ->
-			{61, sound_particle_effect, [int, int, byte, int, int]};
+			{61, sound_particle_effect, [int, int, byte, int, int, bool]};
 		62 ->
 			{62, named_sound_effect, [string, int, int, int, float, byte]};
 		70 ->
@@ -126,6 +125,8 @@ get_by_id(Id) ->
 			{108, enchant_item, [byte, byte]};
 		130 ->
 			{130, update_sign, [int, short, int, string, string, string, string]};
+		131 ->
+			{131, item_data, [short, short, {array, short, binary}]};
 		132 ->
 			{132, update_tile_entity, [int, short, int, byte, short]}; % TODO!
 		200 ->
@@ -137,7 +138,7 @@ get_by_id(Id) ->
 		203 ->
 			{203, tab_complete, [string]};
 		204 ->
-			{204, locale_view_distance, [string, byte, byte, byte]};
+			{204, client_settings, [string, byte, byte, byte, bool]};
 		205 ->
 			{205, client_statuses, [byte]};
 		250 ->
@@ -147,7 +148,7 @@ get_by_id(Id) ->
 		253 ->
 			{253, encryption_key_request, [string, {array, short, binary}, {array, short, binary}]};
 		254 ->
-			{254, server_list_ping, []};
+			{254, server_list_ping, [byte]};
 		255 ->
 			{255, disconnect, [string]};
 		X ->
@@ -213,10 +214,12 @@ get_by_name(Name) ->
 		creative_inventory_action -> 107;
 		enchant_item -> 108;
 		update_sign -> 130;
+		item_data -> 131;
 		update_tile_entity -> 132;
 		increment_statistic -> 200;
 		player_list_item -> 201;
 		player_abilities -> 202;
+		client_settings -> 204;
 		client_statuses -> 205;
 		encryption_key_response -> 252;
 		encryption_key_request -> 253;
