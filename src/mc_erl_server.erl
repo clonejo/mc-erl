@@ -7,7 +7,8 @@
 
 -record(state, {listen, public_key, private_key}).
 
--include_lib("public_key/include/public_key.hrl").
+-include_lib("public_key/include/OTP-PUB-KEY.hrl").
+
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -23,8 +24,13 @@ stop() ->
 init([]) ->
 	process_flag(trap_exit, true),
 	io:format("[~s] starting~n", [?MODULE]),
-	PublicKey = read_public_key("key.pub"),
-	PrivateKey = read_private_key("key"),
+	%PublicKey = read_public_key("key.pub"),
+	%PrivateKey = read_private_key("key"),
+
+	{ok, PrivateKey} = cutkey:rsa(1024, 65537, [{return, key}]),
+	#'RSAPrivateKey'{modulus=Modulus, publicExponent=PublicExponent} = PrivateKey,
+	{'SubjectPublicKeyInfo', PublicKey, not_encrypted} = public_key:pem_entry_encode('SubjectPublicKeyInfo', #'RSAPublicKey'{modulus=Modulus, publicExponent=PublicExponent}),
+
 	Port = mc_erl_config:get(port, 25565),
 	{ok, Listen} = gen_tcp:listen(Port, [binary, {reuseaddr, true}, {active, false},
 	                          {packet, raw}, {nodelay, true}]),
@@ -82,15 +88,3 @@ terminate(Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
-
-
-read_public_key(Path) ->
-    {ok, Bin} = file:read_file(Path),
-    [{PublicKey, _}] = public_key:ssh_decode(Bin, public_key),
-    {'SubjectPublicKeyInfo', R, not_encrypted} = public_key:pem_entry_encode('SubjectPublicKeyInfo', PublicKey),
-    R.
-
-read_private_key(Path) ->
-	{ok, Bin} = file:read_file(Path),
-    [PemEntry] = public_key:pem_decode(Bin),
-    public_key:pem_entry_decode(PemEntry).
