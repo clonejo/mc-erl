@@ -7,4 +7,5 @@
 key
 key.pub
 ebin/*
+deps/*
 Mnesia.*

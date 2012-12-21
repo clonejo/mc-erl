@@ -6,7 +6,8 @@ You'll need an erlang compiler/vm! When you are on Linux, you can install Erlang
 ## Overall setup
 
 1. Download (uncompress if necessary) (or use _git clone_)
-2. $ ./rebar compile
+2. $ ./rebar get-deps
+3. $ ./rebar compile
 
 ## Server
 As we now use Mnesia for storing data permanently, it has to be set up first. Always keep in mind that the table definitions can change on updates, introducing incompabilities. Use the .bat files on Windows.
@@ -31,6 +32,7 @@ The Erlang shell can be left with "q().", which shuts down the server.
 * protocol encryption
 
 ### Todo
+* use andrewtj/cutkey for generating rsa keys
 * proper item handling
 * configuration system (see erlconf)
 * plugin system
