@@ -57,21 +57,25 @@ init_player(Socket, PublicKey, PrivateKey) when is_record(PrivateKey, 'RSAPrivat
 
 decoder(Reader, Logic) when is_pid(Logic) ->
 	case mc_erl_protocol:decode_packet(Reader) of
-		{error,closed} ->
-			%io:format("[~s] socket is closed~n", [?MODULE]),
-			mc_erl_player_logic:packet(Logic, net_disconnect);
-
 		{ok, Packet} ->
 			mc_erl_player_logic:packet(Logic, {packet, Packet}),
-			decoder(Reader, Logic)
+			decoder(Reader, Logic);
+		{error, closed} ->
+			io:format("[~s] socket is closed~n", [?MODULE]),
+			mc_erl_player_logic:packet(Logic, net_disconnect)
 	end.
 
 decrypter(Socket, Key, IVec, Decoder) ->
 	receive
 		{get_bytes, N} ->
-			{Bytes, NewIVec} = mc_erl_protocol:decrypt(Socket, Key, IVec, N),
-			Decoder ! {bytes, Bytes},
-			decrypter(Socket, Key, NewIVec, Decoder)
+			try mc_erl_protocol:decrypt(Socket, Key, IVec, N) of
+				{Bytes, NewIVec} ->
+					Decoder ! {bytes, Bytes},
+					decrypter(Socket, Key, NewIVec, Decoder)
+			catch
+				connection_closed ->
+					Decoder ! {error, closed}
+			end
 	end.
 
 

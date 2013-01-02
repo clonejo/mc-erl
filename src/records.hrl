@@ -11,8 +11,9 @@
 -record(entity, {eid, name, type, logic, location, item_id = empty}).
 
 %% used for persistent player table and within player_logic
--record(player, {eid, name, mode=survival, location={0,0,0,0,0},
-                 inventory=array:new(45, {default, empty}), selected_slot=0}).
+-record(player, {eid, name, location={0,0,0,0,0},
+                 inventory=array:new(45, {default, empty}), selected_slot=0,
+                 mode=survival, fly_speed=12, walk_speed=25, can_fly=true}).
 
 % ======================================================================
 % blocks/chunks
@@ -22,3 +23,5 @@
 
 -record(chunk_column_data, {full_column, chunks=[], add_data=[], biome}).
 -record(chunk_data, {types, metadata, block_light, sky_light}).
+
+-record(slot, {id, count=1, metadata=0, enchantments=[]}).

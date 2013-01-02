@@ -65,9 +65,14 @@ handle_cast(Req, State) ->
 							end,
 							receive after 2000 -> ok end,
 							write(Writer, {login_request, [NewPlayer#player.eid, "DEFAULT", Mode, 0, 0, 0, 100]}),
+
+							send_player_abilities(State),
 							send_inventory(State),
 							%debug:
-							NewState = update_slot(State#state{player=NewPlayer}, 40, {replace, {3, 10, 0, []}}),
+							NewState = update_slot(
+											update_slot(State#state{player=NewPlayer}, 40,
+											{replace, #slot{id=3, count=40}}),
+										41, {replace, #slot{id=3, count=64}}),
 							%NewState = State,
 							write(Writer, {spawn_position, [0, 0, 0]}),
 							{X, Y, Z, Yaw, Pitch} = StartPos = State#state.pos,
@@ -150,11 +155,11 @@ handle_cast(Req, State) ->
                     {BlockId, Metadata} = mc_erl_chunk_manager:get_block({X, Y, Z}),
                     %mc_erl_dropped_item:spawn({X, Y, Z}, {0.1, 0, 0}, {BlockId, 1, Metadata}),
                     mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
-                    {NewState, Rest} = inventory_add(State, {BlockId, 1, Metadata, []}),
+                    {NewState, _Rest} = inventory_add(State, #slot{id=BlockId, count=1, metadata=Metadata}),
                     NewState
 			end;
 		
-		{packet, {player_block_placement, [-1, 255, -1, -1, {_BlockId, _Count, _Metadata, []}, _, _, _]}} ->
+		{packet, {player_block_placement, [-1, 255, -1, -1, #slot{}, _, _, _]}} ->
 			% handle right click when no block selected
 			% handle held item state update (eating food etc.) TODO: recheck this
 			State;
@@ -162,13 +167,13 @@ handle_cast(Req, State) ->
 		{packet, {player_block_placement, [_, _, _, _, empty, _, _, _]}} ->
 			State;
 			
-		{packet, {player_block_placement, [X, Y, Z, Direction, {_, _, _, _}, _, _, _]}} ->
+		{packet, {player_block_placement, [X, Y, Z, Direction, _, _, _, _]}} ->
 			SelectedSlot = MyPlayer#player.selected_slot+36,
 			Inv = MyPlayer#player.inventory,
 			case array:get(SelectedSlot, Inv) of
 				empty ->
-					update_slot(State, SelectedSlot, empty);
-				{BlockId, _Count, Metadata, _Enchantments} ->
+					State;
+				#slot{id=BlockId, metadata=Metadata} ->
 					case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos) of
 						ok ->
 							update_slot(State, SelectedSlot, reduce);
@@ -203,134 +208,87 @@ handle_cast(Req, State) ->
 		
 		{packet, {player_abilities, [_, _Flying, _, _]}} ->
 			State;
+
+		{packet, {window_click, [0, -999, _, _TransactionId, _, _Item]}} ->
+			State#state{cursor_item=empty};
 		
-		{packet, {window_click, [0, Slot, 0, TransactionId, false, _Item]}} -> % player inventory without right-cl and shift
+		{packet, {window_click, [0, SlotNo, 0, _TransactionId, false, _Item]}} -> % left click
+			SelectedSlot = get_slot(State, SlotNo),
+			CursorItem = State#state.cursor_item,
+			Equal = items_equal(SelectedSlot, CursorItem),
 			if
-				Slot /= -999 ->
-					case State#state.cursor_item of
-						empty ->
-							Holding = get_slot(State, Slot),
-							NewState = update_slot(State, Slot, empty),
-							write(Writer, {transaction, [0, TransactionId, true]}),
-							NewState#state{cursor_item=Holding};
-							
-						{BlockId, Count, BlockMetadata} ->
-							SlotBelow = get_slot(State, Slot),
-							case SlotBelow of
-								empty ->
-									NewState = update_slot(State, Slot, {replace, State#state.cursor_item}),
-									write(Writer, {transaction, [0, TransactionId, true]}),
-									NewState#state{cursor_item=empty};
-									
-								{BelowId, BelowCount, BelowMetadata} ->
-									if
-										(BelowId == BlockId) andalso (BelowMetadata == BlockMetadata) ->
-											if
-												Count+BelowCount > 64 ->
-													NewBelowCount = 64,
-													NewHoldingCount = Count + BelowCount - 64,
-													write(Writer, {transaction, [0, TransactionId, true]}),
-													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata}}),
-													NewState#state{cursor_item={BlockId, NewHoldingCount, BlockMetadata}};
-												true ->
-													NewBelowCount = Count + BelowCount,
-													write(Writer, {transaction, [0, TransactionId, true]}),
-													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata}}),
-													NewState#state{cursor_item=empty}
-											end;
-										
-										true ->
-											write(Writer, {transaction, [0, TransactionId, false]}),
-											State
-									end
-							end
-					end;
-				
+				SelectedSlot =:= empty ->
+					update_slot(State#state{cursor_item=empty}, SlotNo, {replace, CursorItem});
+				Equal ->
+					{NewInv, Rest} = inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem),
+					State#state{player=MyPlayer#player{inventory=NewInv}, cursor_item=Rest};
 				true ->
-					case State#state.cursor_item of
-						empty -> State;
-						{_BlockId, _Count, _BlockMetadata} ->
-							%todo: spawn dropped item
-							State#state{cursor_item=empty}
-					end
+					update_slot(State#state{cursor_item=SelectedSlot}, SlotNo, {replace, CursorItem})
 			end;
 		
-		{packet, {window_click, [0, Slot, 1, TransactionId, false, _Item]}} -> % right click without shift
-			if
-				Slot /= -999 ->
-					case State#state.cursor_item of
-						empty ->
-							CSlot = get_slot(State, Slot),
-							case CSlot of
-								empty -> State;
-								{HoldingId, AllCount, HoldingMetadata, HoldingEntchantments} ->
-									HoldingCount = trunc((AllCount+1)/2),
-									LeftCount = trunc(AllCount/2),
-									LeftItem = if
-										LeftCount == 0 -> empty;
-										true -> {HoldingId, LeftCount, HoldingMetadata, HoldingEntchantments}
-									end,
-									NewState = update_slot(State, Slot, {replace, LeftItem}),
-									Holding = {HoldingId, HoldingCount, HoldingMetadata, HoldingEntchantments},
-									write(Writer, {transaction, [0, TransactionId, true]}),
-									NewState#state{cursor_item=Holding}
-							end;
-									
-							
-						{BlockId, Count, BlockMetadata, HoldingEntchantments} ->
-							SlotBelow = get_slot(State, Slot),
-							case SlotBelow of
-								empty ->
-									NewCursorCount = Count - 1,
-									NewState = update_slot(State, Slot, {replace, {BlockId, 1, BlockMetadata, HoldingEntchantments}}),
-									write(Writer, {transaction, [0, TransactionId, true]}),
-									if
-										NewCursorCount == 0 -> NewCItem = empty;
-										true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata, HoldingEntchantments}
-									end,
-									NewState#state{cursor_item=NewCItem};
-									
-								{BelowId, BelowCount, BelowMetadata, HoldingEntchantments} ->
-									if
-										(BelowId == BlockId) andalso (BelowMetadata == BlockMetadata) ->
-											if
-												BelowCount+1 > 64 ->
-													write(Writer, {transaction, [0, TransactionId, false]}),
-													State;
-												true ->
-													NewCursorCount = Count - 1,
-													if
-														NewCursorCount == 0 -> NewCItem = empty;
-														true -> NewCItem = {BlockId, NewCursorCount, BlockMetadata, HoldingEntchantments}
-													end,
-													NewBelowCount = BelowCount + 1,
-													write(Writer, {transaction, [0, TransactionId, true]}),
-													NewState=update_slot(State, Slot, {replace, {BelowId, NewBelowCount, BelowMetadata, HoldingEntchantments}}),
-													NewState#state{cursor_item=NewCItem}
-											end;
-										
-										true ->
-											write(Writer, {transaction, [0, TransactionId, false]}),
-											State
-									end
-							end
-					end;
-				
-				true ->
-					case State#state.cursor_item of
-						empty -> State;
-						{BlockId, Count, BlockMetadata} ->
-							%todo: spawn dropped item
-							if
-								(Count - 1) == 0 -> State#state{cursor_item=empty};
-								true -> State#state{cursor_item={BlockId, Count - 1, BlockMetadata}}
-							end
+		{packet, {window_click, [0, SlotNo, 1, _TransactionId, false, _Item]}} -> % right click
+			SelectedSlot = get_slot(State, SlotNo),
+			CursorItem = State#state.cursor_item,
+			Equal = items_equal(SelectedSlot, CursorItem),
+			case {CursorItem, SelectedSlot, Equal} of
+				{empty, empty, _} -> State;
+				{empty, #slot{count=Count}, _} ->
+					SelectedCount = Count div 2,
+					CursorCount = Count - SelectedCount,
+					update_slot(State#state{cursor_item=SelectedSlot#slot{count=CursorCount}}, SlotNo, {replace, SelectedSlot#slot{count=SelectedCount}});
+				{#slot{}, #slot{}, false} ->
+					update_slot(State#state{cursor_item=SelectedSlot}, SlotNo, {replace, CursorItem});
+				{#slot{count=CursorCount}, empty, _} ->
+					{NewInv, empty} = inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem#slot{count=1}),
+					NewCursorSlot = case CursorCount of
+						1 -> empty;
+						OldCount -> CursorItem#slot{count=OldCount-1}
+					end,
+					State#state{cursor_item=NewCursorSlot, player=State#state.player#player{inventory=NewInv}};
+				{#slot{count=CursorCount}, #slot{}, true} ->
+					case inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem#slot{count=1}) of
+						{NewInv, empty} ->
+							NewCursorSlot = case CursorCount of
+								1 -> empty;
+								OldCount -> CursorItem#slot{count=OldCount-1}
+							end,
+							State#state{cursor_item=NewCursorSlot, player=State#state.player#player{inventory=NewInv}};
+						{_, _} ->
+							State
 					end
+			end;
+
+		{packet, {window_click, [0, SlotNo, _, _TransactionId, true, _Item]}} -> % shift click
+			io:format("SlotNo=~p~n", [SlotNo]),
+			SelectedSlot = get_slot(MyPlayer#player.inventory, SlotNo),
+			if
+				SlotNo >= 9, SlotNo =< 35 ->
+					case inventory_add(Writer, MyPlayer#player.inventory, 36, 44, SelectedSlot) of
+						{NewInv, empty} ->
+							State#state{player=State#state.player#player{inventory=NewInv}};
+						{NewInv, Rest} ->
+							update_slot(State#state{player=State#state.player#player{inventory=NewInv}}, SlotNo, Rest)
+					end;
+				SlotNo >= 36, SlotNo =< 44 ->
+					case inventory_add(Writer, MyPlayer#player.inventory, 9, 35, SelectedSlot) of
+						{NewInv, empty} ->
+							State#state{player=State#state.player#player{inventory=NewInv}};
+						{NewInv, Rest} ->
+							update_slot(State#state{player=State#state.player#player{inventory=NewInv}}, SlotNo, Rest)
+					end;
+				true ->
+					State
 			end;
 		
 		{packet, {window_click, [_, _, _, TransactionId, _, _]}} ->
 			write(Writer, {transaction, [0, TransactionId, false]}),
 			State;
+
+		{packet, {close_window, [0]}} ->
+			State#state{cursor_item=empty};
+
+		{packet, {player_abilities, _}} ->
+			State; %% probably check for proper flying/walking change
 		
 		{packet, UnknownPacket} ->
 			io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
@@ -421,6 +379,9 @@ handle_cast(Req, State) ->
 		
 		net_disconnect ->
 			{disconnect, net_disconnect, State};
+
+		{debug_exec, Fun} ->
+			Fun(State);
 		
 		UnknownMessage ->
 			io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
@@ -454,7 +415,8 @@ handle_cast(Req, State) ->
 		% right path
 		Res -> {noreply, Res}
 	end.
-	
+
+write(none, _) -> not_sent;
 write(Writer, Packet) -> Writer ! {packet, Packet}.
 
 % === entities ===
@@ -548,6 +510,15 @@ send_player_list(State) ->
 	Players = mc_erl_entity_manager:get_all_players(),
 	lists:foreach(fun(Player) -> write(Writer, {player_list_item, [Player#entity.name, true, 1]}) end, Players).
 
+send_player_abilities(State) when is_record(State, state) ->
+	Player = State#state.player,
+	CanFly = case Player#player.can_fly of true -> 1; false -> 0 end,
+	Creative = case Player#player.mode of survival -> 0; creative -> 1 end,
+	Flags = <<0:4, 0:1, CanFly:1, 0:1, Creative:1>>,
+	write(State#state.writer, {player_abilities, [Flags, Player#player.fly_speed, Player#player.walk_speed]}).
+
+% === inventory ===
+
 send_inventory(State) ->
 	Writer = State#state.writer,
 	write(Writer, {window_items, [0, array:to_list(State#state.player#player.inventory)]}).
@@ -563,8 +534,8 @@ update_slot(State, SlotNo, Action) ->
 		reduce ->
 			case array:get(SlotNo, Inv) of
 				empty -> empty;
-				{_BlockId, 1, _Metadata, []} -> empty;
-				{BlockId, Count, Metadata, Enchantments} -> {BlockId, Count-1, Metadata, Enchantments}
+				#slot{count=1} -> empty;
+				#slot{} = S -> S#slot{count=S#slot.count-1}
 			end;
 		{replace, Slot} -> Slot
 	end,
@@ -572,57 +543,94 @@ update_slot(State, SlotNo, Action) ->
 	write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
 	State#state{player=Player#player{inventory=NewInv}}.
 
-get_slot(State, SlotNo) -> array:get(SlotNo, State#state.player#player.inventory).
+get_slot(State, SlotNo) when is_record(State, state) ->
+	array:get(SlotNo, State#state.player#player.inventory);
+get_slot(Inventory, SlotNo) ->
+	array:get(SlotNo, Inventory).
 
-inventory_add(State, {BlockId, Count, Metadata, Enchantments}=Slot) when is_record(State, state) ->
-	{Inventory, Rest} = inventory_add(State#state.writer, State#state.player#player.inventory, 9, Slot),
+items_equal(empty, empty) -> true;
+items_equal(_, empty) -> false;
+items_equal(empty, _) -> false;
+items_equal(Slot1, Slot2) when is_record(Slot1, slot), is_record(Slot2, slot) ->
+	Slot1#slot.id =:= Slot2#slot.id
+		andalso Slot1#slot.metadata =:= Slot2#slot.metadata
+		andalso Slot1#slot.enchantments =:= Slot2#slot.enchantments.
+
+inventory_add(State, #slot{}=Slot) when is_record(State, state) ->
+	{Inventory, Rest} = inventory_add(State#state.writer, State#state.player#player.inventory, 9, 44, Slot),
 	{State#state{player=State#state.player#player{inventory=Inventory}}, Rest}.
 
-inventory_add(Writer, Inventory, 45, Rest) ->
-	inventory_add_to_free_slot(Writer, Inventory, 9, Rest);
-inventory_add(Writer, Inventory, SlotNo, {BlockId, Count, Metadata, Enchantments}=Slot) ->
+inventory_add(_Writer, Inventory, _SlotNo, _EndSlot, empty) ->
+	{Inventory, empty};
+inventory_add(Writer, Inventory, SlotNo, EndSlot, Rest) when EndSlot =:= SlotNo-1 ->
+	inventory_add_to_free_slot(Writer, Inventory, 9, 44, Rest);
+inventory_add(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count, metadata=Metadata, enchantments=Enchantments}=Slot) ->
 	MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
 	case array:get(SlotNo, Inventory) of
-		{BlockId, OldCount, Metadata, Enchantments} ->
+		#slot{id=BlockId, count=OldCount, metadata=Metadata, enchantments=Enchantments} ->
 			if
 				OldCount >= MaxStack ->
-					inventory_add(Writer, Inventory, SlotNo+1, Slot);
+					inventory_add(Writer, Inventory, SlotNo+1, EndSlot, Slot);
 				OldCount+Count > MaxStack ->
-					NewSlot = {BlockId, MaxStack, Metadata, Enchantments},
+					NewSlot = Slot#slot{count=MaxStack},
 					NewInv = array:set(SlotNo, NewSlot, Inventory),
 					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
 					RestCount = OldCount+Count - MaxStack,
-					inventory_add(Writer, NewInv, SlotNo+1, {BlockId, RestCount, Metadata, Enchantments});
+					inventory_add(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
 				true ->
-					NewSlot = {BlockId, OldCount+Count, Metadata, Enchantments},
+					NewSlot = Slot#slot{count=OldCount+Count},
 					NewInv = array:set(SlotNo, NewSlot, Inventory),
 					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
 					{NewInv, empty}
 			end;
 		_ ->
-			inventory_add(Writer, Inventory, SlotNo+1, Slot)
+			inventory_add(Writer, Inventory, SlotNo+1, EndSlot, Slot)
 	end.
-inventory_add_to_free_slot(Writer, Inventory, 45, Rest) ->
+inventory_add_to_free_slot(_Writer, Inventory, SlotNo, EndSlot, Rest) when EndSlot =:= SlotNo-1 ->
 	{Inventory, Rest};
-inventory_add_to_free_slot(Writer, Inventory, SlotNo, {BlockId, Count, Metadata, Enchantments}=Slot) ->
+inventory_add_to_free_slot(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count}=Slot) ->
 	MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
 	case array:get(SlotNo, Inventory) of
 		empty ->
 			if
 				Count > MaxStack ->
-					NewSlot = {BlockId, MaxStack, Metadata, Enchantments},
+					NewSlot = Slot#slot{count=MaxStack},
 					NewInv = array:set(SlotNo, NewSlot, Inventory),
 					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
 					RestCount = Count - MaxStack,
-					inventory_add_to_free_slot(Writer, NewInv, SlotNo+1, {BlockId, RestCount, Metadata, Enchantments});
+					inventory_add_to_free_slot(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
 				true ->
-					NewSlot = {BlockId, Count, Metadata, Enchantments},
+					NewInv = array:set(SlotNo, Slot, Inventory),
+					write(Writer, {set_slot, [0, SlotNo, Slot]}),
+					{NewInv, empty}
+			end;
+		_ ->
+			inventory_add_to_free_slot(Writer, Inventory, SlotNo+1, EndSlot, Slot)
+	end.
+
+inventory_add_to_stack(Writer, Inventory, SlotNo, #slot{id=BlockId, count=Count}=Slot) ->
+	MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
+	case array:get(SlotNo, Inventory) of
+		#slot{count=OldCount} ->
+			if
+				OldCount >= MaxStack ->
+					{Inventory, Slot};
+				OldCount+Count > MaxStack ->
+					NewSlot = Slot#slot{count=MaxStack},
+					NewInv = array:set(SlotNo, NewSlot, Inventory),
+					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
+					RestCount = OldCount+Count - MaxStack,
+					{NewInv, Slot#slot{count=RestCount}};
+				true ->
+					NewSlot = Slot#slot{count=OldCount+Count},
 					NewInv = array:set(SlotNo, NewSlot, Inventory),
 					write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
 					{NewInv, empty}
 			end;
-		_ ->
-			inventory_add_to_free_slot(Writer, Inventory, SlotNo+1, Slot)
+		empty ->
+			NewInv = array:set(SlotNo, Slot, Inventory),
+			write(Writer, {set_slot, [0, SlotNo, Slot]}),
+			{NewInv, empty}
 	end.
 
 % ==== Checks if location is in visible range

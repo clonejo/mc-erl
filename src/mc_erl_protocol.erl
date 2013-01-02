@@ -23,17 +23,21 @@ decrypt(Socket, Key, IVec, BytesCount) ->
 decrypt(_Socket, _Key, IVec, 0, Return) ->
 	{list_to_binary(lists:reverse(Return)), IVec};
 decrypt(Socket, Key, IVec, BytesCount, Return) ->
-	{ok, <<Bin>>=B} = gen_tcp:recv(Socket, 1, ?timeout),
-	%io:format("received:~n"),
-	%mc_erl_protocol:print_hex(Bin),
-	Cipher = <<Bin, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>,
-	Text = crypto:aes_cfb_128_decrypt(Key, IVec, Cipher),
+	case gen_tcp:recv(Socket, 1, ?timeout) of
+		{error, closed} ->
+			throw(connection_closed);
+		{ok, <<Bin>>=B} ->
+			%io:format("received:~n"),
+			%mc_erl_protocol:print_hex(Bin),
+			Cipher = <<Bin, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>,
+			Text = crypto:aes_cfb_128_decrypt(Key, IVec, Cipher),
 
-	%io:format("decrypted:~n"),
-	%mc_erl_protocol:print_hex(Text),
+			%io:format("decrypted:~n"),
+			%mc_erl_protocol:print_hex(Text),
 
-	<<Ret:1/binary, _/binary>> = Text,
-	decrypt(Socket, Key, gen_ivec(IVec, B), BytesCount-1, [Ret|Return]).
+			<<Ret:1/binary, _/binary>> = Text,
+			decrypt(Socket, Key, gen_ivec(IVec, B), BytesCount-1, [Ret|Return])
+	end.
 
 encrypt(Socket, Key, IVec, Text) when is_binary(Text) ->
 	encrypt(Socket, Key, IVec, binary_to_list(Text), []).
@@ -199,10 +203,10 @@ read_slot(Reader) ->
 			Metadata = read_short(Reader),
 			case read_short(Reader) of
 				-1 ->
-					{ItemId, ItemCount, Metadata, []};
+					#slot{id=ItemId, count=ItemCount, metadata=Metadata};
 				BinLength ->
 					{ok, BinEnchantments} = get_bytes(Reader, BinLength),
-					{ItemId, ItemCount, Metadata, read_enchantments(BinEnchantments)}
+					#slot{id=ItemId, count=ItemCount, metadata=Metadata, enchantments=read_enchantments(BinEnchantments)}
 			end
 	end.
 
@@ -380,6 +384,8 @@ encode_bool(N) ->
 	 	true -> <<0>>
 	 end.
 
+encode_byte(B) when byte_size(B) =:= 1 ->
+	B;
 encode_byte(N) ->
 	<<N:8/signed>>.
 
@@ -454,19 +460,16 @@ encode_metadata([P|Rest], Output) ->
 	end,
 	encode_metadata(Rest, [ [Comp, DataBin] | Output ]).
 
-encode_slot(P) ->
-	case P of
-		empty -> encode_short(-1);
-		{ItemId, Count, Metadata} ->
-			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata), encode_short(-1)];
-		{ItemId, Count, Metadata, []} ->
-			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata), encode_short(-1)];
-		{ItemId, Count, Metadata, EnchList} ->
-			NbtEncoded = encode_enchantments(EnchList),
-			[encode_short(ItemId), encode_byte(Count),
-			 encode_short(Metadata), encode_short(byte_size(NbtEncoded)), NbtEncoded]
+encode_slot(empty) -> encode_short(-1);
+encode_slot(#slot{}=S) ->
+	case S of
+		#slot{enchantments=[]} ->
+			[encode_short(S#slot.id), encode_byte(S#slot.count),
+			 encode_short(S#slot.metadata), encode_short(-1)];
+		#slot{} ->
+			NbtEncoded = encode_enchantments(S#slot.enchantments),
+			[encode_short(S#slot.id), encode_byte(S#slot.count),
+			 encode_short(S#slot.metadata), encode_short(byte_size(NbtEncoded)), NbtEncoded]
 	end.
 
 

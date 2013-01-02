@@ -25,6 +25,8 @@ The server runs at port 25565 (default). The port and other options can be set i
 ## PS:
 The Erlang shell can be left with "q().", which shuts down the server.
 
+If you want to talk to me, I'm often around at #mcdevs on Freenode.
+
 ## Feature list
 * compatible to Minecraft 1.4.5
 * see other players
@@ -32,8 +34,8 @@ The Erlang shell can be left with "q().", which shuts down the server.
 * protocol encryption
 
 ### Todo
-* use andrewtj/cutkey for generating rsa keys
 * proper item handling
+* 1.4.6 compatability
 * configuration system (see erlconf)
 * plugin system
 * see player sneaking
