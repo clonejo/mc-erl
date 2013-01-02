@@ -11,14 +11,14 @@ init_player(Socket, PublicKey, PrivateKey) when is_record(PrivateKey, 'RSAPrivat
 		{server_list_ping, [1] } ->
 			send(Socket, {disconnect,[lists:flatten([
 				167, "1", 0,
-				"49", 0,
-				"1.4.5", 0,
+				"51", 0,
+				"1.4.6", 0,
 				mc_erl_config:get(description, []), 0,
 				integer_to_list(mc_erl_entity_manager:player_count()), 0,
 				"101"])]}),
 			gen_tcp:close(Socket);
 
-		{handshake, [49, Name, _Host, _Port]} ->
+		{handshake, [51, Name, _Host, _Port]} ->
 			io:format("[~s] Player joining: ~s~n", [?MODULE, Name]),
 			
 			% generate token

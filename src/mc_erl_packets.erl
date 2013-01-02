@@ -47,12 +47,10 @@ get_by_id(Id) ->
 		20 ->
 			{20, named_entity_spawn, [int, string, abs_int, abs_int, abs_int,
 			                          byte, byte, short, metadata]};
-		21 ->
-			{21, pickup_spawn, [int, slot, abs_int, abs_int, abs_int, byte, byte, byte]};
 		22 ->
 			{22, collect_item, [int, int]};
 		23 -> % no fireballs supported!
-			{23, add_object, [int, byte, abs_int, abs_int, abs_int, projectile_data]}; 
+			{23, add_object, [int, byte, abs_int, abs_int, abs_int, byte, byte, projectile_data]}; 
 		24 ->
 			{24, mob_spawn, [int, byte, abs_int, abs_int, abs_int, byte, byte, byte, short, short, short, metadata]};
 		26 ->
@@ -178,7 +176,6 @@ get_by_name(Name) ->
 		animation -> 18;
 		entity_action -> 19;
 		named_entity_spawn -> 20;
-		pickup_spawn -> 21;
 		collect_item -> 22;
 		add_object -> 23;
 		mob_spawn -> 24;
