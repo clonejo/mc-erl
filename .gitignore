@@ -3,6 +3,7 @@
 *.beam
 *.dump
 *.log
+*.swp
 *.zip
 key
 key.pub
