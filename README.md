@@ -3,11 +3,13 @@ You'll need an erlang compiler/vm! When you are on Linux, you can install Erlang
 
     sudo apt-get install erlang
 
+You will also need rebar, the commonly used Erlang build tool.
+
 ## Overall setup
 
 1. Download (uncompress if necessary) (or use _git clone_)
-2. $ ./rebar get-deps
-3. $ ./rebar compile
+2. $ rebar get-deps
+3. $ rebar compile
 
 ## Server
 As we now use Mnesia for storing data permanently, it has to be set up first. Always keep in mind that the table definitions can change on updates, introducing incompabilities. Use the .bat files on Windows.
@@ -35,7 +37,6 @@ If you want to talk to me, I'm often around at #mcdevs on Freenode.
 
 ### Todo
 * proper item handling
-* 1.4.6 compatability
 * configuration system (see erlconf)
 * plugin system
 * see player sneaking
