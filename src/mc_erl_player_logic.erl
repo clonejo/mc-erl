@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_player_logic).
 % only pure erlang, only pure hardcore
 -export([start_logic/2, packet/2]).

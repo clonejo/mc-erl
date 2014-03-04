@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_server).
 -behaviour(gen_server).
 

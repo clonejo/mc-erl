@@ -1,3 +1,5 @@
+%% @copyright 2012 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_dropped_item).
 
 -export([new/2, spawn/3]).

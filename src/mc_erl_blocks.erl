@@ -1,3 +1,5 @@
+%% @copyright 2012 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_blocks).
 
 -export([block_info/1, can_build/1]).

@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_app).
 -export([setup/0, start/2, stop/1, os_setup/0, os_run/0]).
 

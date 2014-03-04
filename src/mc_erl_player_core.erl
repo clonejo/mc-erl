@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_player_core).
 -export([init_player/3, keep_alive_sender/1]).
 

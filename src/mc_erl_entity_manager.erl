@@ -1,3 +1,5 @@
+%% @copyright 2012 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_entity_manager).
 -behaviour(gen_server).
 

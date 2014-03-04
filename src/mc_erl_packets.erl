@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_packets).
 -export([get_by_id/1, get_by_name/1, get_enchantment_by_id/1, get_enchantment_by_name/1]).
 

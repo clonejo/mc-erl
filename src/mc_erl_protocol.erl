@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_protocol).
 
 -export([decode_packet/1, encode_packet/1, decrypt/4, encrypt/4, print_hex/1]).

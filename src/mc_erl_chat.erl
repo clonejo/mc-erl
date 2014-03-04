@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
+
 -module(mc_erl_chat).
 
 -export([broadcast/1, broadcast/2, to_player/2, filter_message/1, is_valid_nickname/1]).

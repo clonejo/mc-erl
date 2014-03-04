@@ -1,3 +1,5 @@
+%% @copyright 2012-2013 Feiko Nanninga
+
 -module(mc_erl_chunk_generator).
 
 -export([gen_column/1]).
