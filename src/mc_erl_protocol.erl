@@ -31,7 +31,7 @@ decrypt(Socket, Key, IVec, BytesCount, Return) ->
         {ok, <<Bin>>=B} ->
             %mc_erl_protocol:print_hex(Bin),
             Cipher = <<Bin, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>,
-            Text = crypto:aes_cfb_128_decrypt(Key, IVec, Cipher),
+            Text = crypto:block_decrypt(aes_cfb128, Key, IVec, Cipher),
 
             %mc_erl_protocol:print_hex(Text),
 
@@ -45,7 +45,8 @@ encrypt(Socket, Key, IVec, Text) when is_binary(Text) ->
 encrypt(_, _, IVec, [], Return) ->
     {lists:reverse(Return), IVec};
 encrypt(Socket, Key, IVec, [Text|Rest], Return) ->
-    Cipher = crypto:aes_cfb_128_encrypt(Key, IVec, <<Text, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>),
+    Cipher = crypto:block_encrypt(aes_cfb128, Key, IVec,
+                                  <<Text, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>),
     <<Ret:1/binary, _/binary>> = Cipher,
     encrypt(Socket, Key, gen_ivec(IVec, Ret), Rest, [Ret|Return]).
 
