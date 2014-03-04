@@ -7,6 +7,6 @@
         {vsn, "1"},
         %{modules, []}, % added by rebar
         {registered, []},
-        {applications, [kernel, stdlib, mnesia, cutkey]}
+        {applications, [kernel, stdlib, lager, mnesia, cutkey]}
     ]
 }.

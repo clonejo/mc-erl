@@ -25,7 +25,7 @@ stop() ->
 % gen_server callbacks
 init([]) ->
     process_flag(trap_exit, true),
-    io:format("[~s] starting~n", [?MODULE]),
+    lager:info("[~s] starting~n", [?MODULE]),
     %PublicKey = read_public_key("key.pub"),
     %PrivateKey = read_private_key("key"),
 
@@ -41,7 +41,7 @@ init([]) ->
     {ok, #state{listen=Listen, public_key=PublicKey, private_key=PrivateKey}}.
 
 acceptor(Listen) ->
-    io:format("[~s:acceptor] awaiting connection...~n", [?MODULE]),
+    lager:debug("[~s:acceptor] awaiting connection...~n", [?MODULE]),
     case gen_tcp:accept(Listen) of
         {ok, Socket} ->
             gen_server:cast(?MODULE, {new_connection, Socket}),
@@ -57,11 +57,10 @@ ticker(Time) ->
     ticker(Time+1).
 
 handle_call(Message, _From, State) ->
-    io:format("[~s] received call: ~p~n", [?MODULE, Message]),
+    lager:notice("[~s] received call: ~p~n", [?MODULE, Message]),
     {noreply, State}.
 
 handle_cast({new_connection, Socket}, State) ->
-    %io:format("[~s] Player connecting...~n", [?MODULE]),
     Pid = proc_lib:start(mc_erl_player_core, init_player, [Socket, State#state.public_key, State#state.private_key]),
     gen_tcp:controlling_process(Socket, Pid),
     {noreply, State};
@@ -72,19 +71,19 @@ handle_cast({tick, Time}=Tick, State) when is_integer(Time) ->
     {noreply, State};
 
 handle_cast(stop, State) ->
-    io:format("[~s] stopping~n", [?MODULE]),
+    lager:info("[~s] stopping~n", [?MODULE]),
     {stop, normal, State};
 
 handle_cast(Message, State) ->
-    io:format("[~s] received cast: ~p~n", [?MODULE, Message]),
+    lager:notice("[~s] received cast: ~p~n", [?MODULE, Message]),
     {noreply, State}.
 
 handle_info(Message, State) ->
-    io:format("[~s] received info: ~p~n", [?MODULE, Message]),
+    lager:notice("[~s] received info: ~p~n", [?MODULE, Message]),
     {noreply, State}.
 
 terminate(Reason, _State) ->
-    io:format("[~s] terminated with Reason=~p~n", [?MODULE, Reason]),
+    lager:notice("[~s] terminated with Reason=~p~n", [?MODULE, Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

@@ -46,14 +46,14 @@ handle_info(suicide, State) ->
     {stop, normal, State};
 
 handle_info(Info, State) ->
-    io:format("[~s] got unknown info: ~p~n", [?MODULE, Info]),
+    lager:notice("[~s] got unknown info: ~p~n", [?MODULE, Info]),
     {noreply, State}.
 
 handle_call(get_state, _From, State) ->
     {reply, State, State};
 
 handle_call(Req, _From, State) ->
-    io:format("[~s] got unknown call: ~p~n", [?MODULE, Req]),
+    lager:notice("[~s] got unknown call: ~p~n", [?MODULE, Req]),
     {noreply, State}.
 
 handle_cast(Req, State) ->
@@ -126,7 +126,7 @@ handle_cast(Req, State) ->
 
 pick_up_check(Entity, State) when Entity#entity.type =:= player ->
     case in_range(Entity#entity.location, State) of
-        true -> io:format("~p: player in range!~n", [State#state.entity#entity.eid]);
+        true -> lager:notice("~p: player in range!~n", [State#state.entity#entity.eid]);
         false -> ok
     end,
     State;

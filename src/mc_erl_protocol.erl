@@ -29,12 +29,10 @@ decrypt(Socket, Key, IVec, BytesCount, Return) ->
         {error, closed} ->
             throw(connection_closed);
         {ok, <<Bin>>=B} ->
-            %io:format("received:~n"),
             %mc_erl_protocol:print_hex(Bin),
             Cipher = <<Bin, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>,
             Text = crypto:aes_cfb_128_decrypt(Key, IVec, Cipher),
 
-            %io:format("decrypted:~n"),
             %mc_erl_protocol:print_hex(Text),
 
             <<Ret:1/binary, _/binary>> = Text,
@@ -55,7 +53,6 @@ encrypt(Socket, Key, IVec, [Text|Rest], Return) ->
 gen_ivec(OldIVec, Data) when byte_size(Data) =:= 1 ->
     %L = size(Data),
     <<_:1/binary, IVPart/binary>> = OldIVec,
-    %io:format("IVPart=~p~n", [IVPart]),
     list_to_binary([IVPart, Data]).
 
 
@@ -67,7 +64,6 @@ decode_packet(Reader) ->
     Recv = get_bytes(Reader, 1),
     case Recv of
         {ok, <<Id>>} ->
-            %io:format("[~p] received packet id: ~p~n", [?MODULE, Id]),
             {Id, Name, TypeParamList} = mc_erl_packets:get_by_id(Id),
             ParamList = decode_param_list(Reader, TypeParamList, []),
             {ok, {Name, ParamList}};
@@ -105,7 +101,7 @@ read_value(Reader, Type) ->
         projectile_data -> read_projectile_data(Reader);
         {array, CountType, PayloadType} -> read_array(Reader, CountType, PayloadType);
         _ ->
-            io:format("[~w] unknown datatype: ~p~n", [?MODULE, Type]),
+            lager:emergency("[~w] unknown datatype: ~p~n", [?MODULE, Type]),
             {error, unknown_datatype, Type}
     end.
 
@@ -323,7 +319,6 @@ read_array(Reader, CountType, PayloadType) ->
 
 encode_packet({Name, ParamList}) ->
     {Id, Name, TypeParamList} = mc_erl_packets:get_by_name(Name),
-    %io:format("[~p] sending packet id: ~p~n", [?MODULE, Id]),
     case length(TypeParamList) of
         0 ->
             <<Id>>;
@@ -331,15 +326,9 @@ encode_packet({Name, ParamList}) ->
             case encode_param_list(ParamList, TypeParamList) of
                 Bin when is_binary(Bin) ->
                     R = list_to_binary([Id, Bin]),
-                    %case Name of
-                    %	disconnect ->
-                    %		io:format("[~s] packet ~p, params:~n~p, binary:~n", [?MODULE, Name, ParamList]),
-                    %		print_hex(R);
-                    %	_ -> ok
-                    %end,
                     R;
                 {error, not_enough_arguments, OutputSoFar} ->
-                    io:format("[~s] Error encoding ~p: not enough arguments!~nOutput so far: ~p~n", [?MODULE, Name, OutputSoFar]),
+                    lager:emergency("[~s] Error encoding ~p: not enough arguments!~nOutput so far: ~p~n", [?MODULE, Name, OutputSoFar]),
                     {error, not_enough_arguments}
             end
     end.

@@ -183,7 +183,7 @@ write_column(Coord, ColumnData) ->
 
 % gen_server callbacks
 init([]) ->
-    io:format("[~s] starting~n", [?MODULE]),
+    lager:info("[~s] starting~n", [?MODULE]),
     {ok, void}.
 
 handle_call(loaded_chunks, _From, Chunks) ->
@@ -192,7 +192,7 @@ handle_call(loaded_chunks, _From, Chunks) ->
 handle_call(Message, _From, State) ->
     case Message of
         _ ->
-            io:format("[~s] received call: ~p~n", [?MODULE, Message]),
+            lager:notice("[~s] received call: ~p~n", [?MODULE, Message]),
             {noreply, State}
     end.
 
@@ -241,17 +241,17 @@ handle_cast({tick, _Time}, Chunks) ->
     {noreply, Chunks};
 
 handle_cast(stop, State) ->
-    io:format("[~s] stopping~n", [?MODULE]),
+    lager:info("[~s] stopping~n", [?MODULE]),
     {stop, normal, State};
 
 handle_cast(Message, State) ->
-    io:format("[~s] received cast: ~p~n", [?MODULE, Message]),
+    lager:notice("[~s] received cast: ~p~n", [?MODULE, Message]),
     {noreply, State}.
 
 handle_info(Message, State) ->
     case Message of
         _ ->
-            io:format("[~s] received info: ~p~n", [?MODULE, Message]),
+            lager:notice("[~s] received info: ~p~n", [?MODULE, Message]),
             {noreply, State}
     end.
 

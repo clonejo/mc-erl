@@ -37,11 +37,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 handle_info(Info, State) ->
-    io:format("[~s] got unknown info: ~p~n", [?MODULE, Info]),
+    lager:notice("[~s] got unknown info: ~p~n", [?MODULE, Info]),
     {noreply, State}.
 
 handle_call(Req, _From, State) ->
-    io:format("[~s] got unknown packet: ~p~n", [?MODULE, Req]),
+    lager:notice("[~s] got unknown packet: ~p~n", [?MODULE, Req]),
     {noreply, State}.
 
 handle_cast(Req, State) ->
@@ -56,7 +56,7 @@ handle_cast(Req, State) ->
                            true ->	
                                case mc_erl_entity_manager:register_player(State#state.player) of
                                    {error, name_in_use} ->
-                                       io:format("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
+                                       lager:warning("[~s] Someone with the same name is already logged in, kicked~n", [?MODULE]),
                                        write(Writer, {disconnect, ["Someone with the same name is already logged in :("]}),
                                        {disconnect, {multiple_login, State#state.player#player.name}, State};
 
@@ -94,7 +94,7 @@ handle_cast(Req, State) ->
                                        NewState#state{chunks=Chunks, logged_in=true}
                                end;
                            false ->
-                               io:format("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
+                               lager:warning("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
                                write(Writer, {disconnect, ["Invalid username :("]}),
                                {disconnect, {invalid_username, MyPlayer#player.name}, State}
                        end;
@@ -180,7 +180,7 @@ handle_cast(Req, State) ->
                                    ok ->
                                        update_slot(State, SelectedSlot, reduce);
                                    {error, forbidden_block_id, {_RX, _RY, _RZ}} ->
-                                       io:format("[~s] ~s tried to set a forbidden block (~p)~n", [?MODULE, MyPlayer#player.name, BlockId])
+                                       lager:warning("[~s] ~s tried to set a forbidden block (~p)~n", [?MODULE, MyPlayer#player.name, BlockId])
                                end
                        end;
 
@@ -261,7 +261,6 @@ handle_cast(Req, State) ->
                        end;
 
                    {packet, {window_click, [0, SlotNo, _, _TransactionId, true, _Item]}} -> % shift click
-                       io:format("SlotNo=~p~n", [SlotNo]),
                        SelectedSlot = get_slot(MyPlayer#player.inventory, SlotNo),
                        if
                            SlotNo >= 9, SlotNo =< 35 ->
@@ -293,7 +292,7 @@ handle_cast(Req, State) ->
                        State; %% probably check for proper flying/walking change
 
                    {packet, UnknownPacket} ->
-                       io:format("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
+                       lager:notice("[~s] unhandled packet: ~p~n", [?MODULE, UnknownPacket]),
                        State;
                    % protocol reactions end
 
@@ -386,30 +385,30 @@ handle_cast(Req, State) ->
                        Fun(State);
 
                    UnknownMessage ->
-                       io:format("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
+                       lager:notice("[~s] unknown message: ~p~n", [?MODULE, UnknownMessage]),
                        State
                end,
     case RetState of
         % graceful stops
         {disconnect, net_disconnect, DisconnectState} ->
-            io:format("[~s] Connection lost with ~s~n", [?MODULE, DisconnectState#state.player#player.name]),
+            lager:warning("[~s] Connection lost with ~s~n", [?MODULE, DisconnectState#state.player#player.name]),
             {stop, normal, DisconnectState};
 
         {disconnect, {graceful, _QuitMessage}, DisconnectState} ->
-            io:format("[~s] Player ~s has quit~n", [?MODULE, DisconnectState#state.player#player.name]),
+            lager:info("[~s] Player ~s has quit~n", [?MODULE, DisconnectState#state.player#player.name]),
             {stop, normal, DisconnectState};
 
         % not graceful stops
         {disconnect, {invalid_username, AttemptedName}, DisconnectState} ->
-            io:format("[~s] Invalid username trying to log in: ~s~n", [?MODULE, AttemptedName]),
+            lager:info("[~s] Invalid username trying to log in: ~s~n", [?MODULE, AttemptedName]),
             {stop, normal, DisconnectState};
 
         {disconnect, {multiple_login, AttemptedName}, DisconnectState} ->
-            io:format("[~s] Multiple login: ~s~n", [?MODULE, AttemptedName]),
+            lager:info("[~s] Multiple login: ~s~n", [?MODULE, AttemptedName]),
             {stop, normal, DisconnectState};
 
         {disconnect, {cheating, Reason}, DisconnectState} ->
-            io:format("[~s] player is kicked due cheating: ~p~n", [?MODULE, Reason]),
+            lager:notice("[~s] player is kicked due cheating: ~p~n", [?MODULE, Reason]),
             {stop, normal, DisconnectState};
 
         {disconnect, Reason, DisconnectState} -> {stop, Reason, DisconnectState};

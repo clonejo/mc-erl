@@ -20,7 +20,7 @@ init_player(Socket, PublicKey, PrivateKey) when is_record(PrivateKey, 'RSAPrivat
             gen_tcp:close(Socket);
 
         {handshake, [51, Name, _Host, _Port]} ->
-            io:format("[~s] Player joining: ~s~n", [?MODULE, Name]),
+            lager:notice("[~s] Player joining: ~s~n", [?MODULE, Name]),
 
             % generate token
             Token = crypto:strong_rand_bytes(4),
@@ -62,7 +62,7 @@ decoder(Reader, Logic) when is_pid(Logic) ->
             mc_erl_player_logic:packet(Logic, {packet, Packet}),
             decoder(Reader, Logic);
         {error, closed} ->
-            io:format("[~s] socket is closed~n", [?MODULE]),
+            lager:warning("[~s] socket is closed~n", [?MODULE]),
             mc_erl_player_logic:packet(Logic, net_disconnect)
     end.
 
@@ -97,7 +97,6 @@ async_writer(Socket, Key, IVec) ->
             ok;
         {packet, Data} ->
             {PacketName, _} = Data,
-            %io:format("[~s:async_writer] sending ~p~n", [?MODULE, PacketName]),
             Encoded = mc_erl_protocol:encode_packet(Data),
             {Encr, NewIVec} = mc_erl_protocol:encrypt(Socket, Key, IVec, Encoded),
             gen_tcp:send(Socket, Encr),

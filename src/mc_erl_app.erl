@@ -20,14 +20,15 @@ stop(_State) -> mc_erl_server_sup:shutdown().
 
 %% to be called from OS' command line
 os_setup() ->
-    io:format("~p~n", [mnesia:create_schema([node()])]),
+    lager:info("~p~n", [mnesia:create_schema([node()])]),
     mnesia:start(),
-    io:format("~p~n", [setup()]),
+    lager:info("~p~n", [setup()]),
     mnesia:stop(),
     halt().
 
 %% to be called from OS' command line
 os_run() ->
+    lager:start(),
     ensure_started(mnesia),
     ensure_started(cutkey),
     ok = application:start(mc_erl).
