@@ -5,8 +5,11 @@
 *.log
 *.swp
 *.zip
+
+.deps_plt
 key
 key.pub
 ebin/*
 deps/*
 Mnesia.*
+.eunit/*

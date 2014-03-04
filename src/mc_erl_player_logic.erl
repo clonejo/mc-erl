@@ -654,10 +654,7 @@ load_chunks(_Writer, []) -> ok;
 load_chunks(Writer, [{X, Z}|Rest]) ->
 	ChunkData = mc_erl_chunk_manager:get_chunk({X, Z}),
 	write(Writer, {map_chunk, [X, Z, {parsed, ChunkData}]}),
-	load_chunks(Writer, Rest);
-load_chunks(Writer, ChunksSet) ->
-	Chunks = sets:to_list(ChunksSet),
-	load_chunks(Writer, Chunks).
+	load_chunks(Writer, Rest).
 
 unload_chunks(_Writer, []) -> ok;
 unload_chunks(Writer, [{X, Z}|Rest]) ->
