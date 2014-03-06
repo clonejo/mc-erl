@@ -1,7 +1,7 @@
 %% @copyright 2012-2013 Gregory Fefelov, Feiko Nanninga
 
 -module(mc_erl_player_core).
--export([init_player/3, keep_alive_sender/1]).
+-export([init_player/3, keep_alive_sender/1, write/2]).
 
 -include_lib("public_key/include/public_key.hrl").
 
@@ -102,6 +102,9 @@ async_writer(Socket, Key, IVec) ->
             gen_tcp:send(Socket, Encr),
             async_writer(Socket, Key, NewIVec)
     end.
+
+write(Writer, Packet) ->
+    Writer ! {packet, Packet}.
 
 % Packet gets encoded, so unencrypted communication only!
 send(Socket, Packet) ->

@@ -3,10 +3,12 @@
 -module(mc_erl_player_logic).
 % only pure erlang, only pure hardcore
 -export([start_logic/2, packet/2]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+         code_change/3]).
 
--record(state, {writer, player, mode=creative, chunks=none, cursor_item=empty, logged_in=false,
-                known_entities=dict:new(), last_tick, pos={0.5, 70, 0.5, 0, 0}}).
+-record(state, {writer, player, mode=creative, chunks=none, cursor_item=empty,
+                logged_in=false, known_entities=dict:new(), last_tick,
+                pos={0.5, 70, 0.5, 0, 0}}).
 
 -record(ke_metadata, {relocations=0}).
 
@@ -27,7 +29,8 @@ terminate(_Reason, State) when is_record(State, state) ->
     State#state.writer ! stop,
     case State#state.logged_in of
         true ->
-            mc_erl_chat:broadcast(State#state.player#player.name ++ " has left the server."),
+            mc_erl_chat:broadcast(State#state.player#player.name
+                                  ++ " has left the server."),
             mc_erl_entity_manager:delete_player(State#state.player);
         false -> ok
     end,
@@ -69,13 +72,7 @@ handle_cast(Req, State) ->
                                        write(Writer, {login_request, [NewPlayer#player.eid, "DEFAULT", Mode, 0, 0, 0, 100]}),
 
                                        send_player_abilities(State),
-                                       send_inventory(State),
-                                       %debug:
-                                       NewState = update_slot(
-                                                    update_slot(State#state{player=NewPlayer}, 40,
-                                                                {replace, #slot{id=3, count=40}}),
-                                                    41, {replace, #slot{id=3, count=64}}),
-                                       %NewState = State,
+                                       mc_erl_inventory:send_inventory(Writer, NewPlayer#player.inventory),
                                        write(Writer, {spawn_position, [0, 0, 0]}),
                                        {X, Y, Z, Yaw, Pitch} = StartPos = State#state.pos,
 
@@ -91,7 +88,7 @@ handle_cast(Req, State) ->
 
                                        %proc_lib:spawn_link(fun() -> process_flag(trap_exit, true), mc_erl_player_core:keep_alive_sender(Writer) end),
 
-                                       NewState#state{chunks=Chunks, logged_in=true}
+                                       State#state{player=NewPlayer, chunks=Chunks, logged_in=true}
                                end;
                            false ->
                                lager:warning("[~s] Someone with the wrong nickname has tried to log in, kicked~n", [?MODULE]),
@@ -157,8 +154,8 @@ handle_cast(Req, State) ->
                                {BlockId, Metadata} = mc_erl_chunk_manager:get_block({X, Y, Z}),
                                %mc_erl_dropped_item:spawn({X, Y, Z}, {0.1, 0, 0}, {BlockId, 1, Metadata}),
                                mc_erl_chunk_manager:set_block({X, Y, Z}, {0, 0}),
-                               {NewState, _Rest} = inventory_add(State, #slot{id=BlockId, count=1, metadata=Metadata}),
-                               NewState
+                               {NewInv, _Rest} = mc_erl_inventory:inventory_add(Writer, MyPlayer#player.inventory, #slot{id=BlockId, count=1, metadata=Metadata}),
+                               State#state{player=State#state.player#player{inventory=NewInv}}
                        end;
 
                    {packet, {player_block_placement, [-1, 255, -1, -1, #slot{}, _, _, _]}} ->
@@ -178,7 +175,8 @@ handle_cast(Req, State) ->
                            #slot{id=BlockId, metadata=Metadata} ->
                                case mc_erl_chunk_manager:set_block({X, Y, Z, Direction}, {BlockId, Metadata}, State#state.pos) of
                                    ok ->
-                                       update_slot(State, SelectedSlot, reduce);
+                                       NewInv = mc_erl_inventory:update_slot(Writer, State#state.player#player.inventory, SelectedSlot, reduce),
+                                       State#state{player=State#state.player#player{inventory=NewInv}};
                                    {error, forbidden_block_id, {_RX, _RY, _RZ}} ->
                                        lager:warning("[~s] ~s tried to set a forbidden block (~p)~n", [?MODULE, MyPlayer#player.name, BlockId])
                                end
@@ -215,40 +213,44 @@ handle_cast(Req, State) ->
                        State#state{cursor_item=empty};
 
                    {packet, {window_click, [0, SlotNo, 0, _TransactionId, false, _Item]}} -> % left click
-                       SelectedSlot = get_slot(State, SlotNo),
+                       SelectedSlot = mc_erl_inventory:get_slot(State#state.player#player.inventory, SlotNo),
                        CursorItem = State#state.cursor_item,
-                       Equal = items_equal(SelectedSlot, CursorItem),
+                       Equal = mc_erl_inventory:items_equal(SelectedSlot, CursorItem),
                        if
                            SelectedSlot =:= empty ->
-                               update_slot(State#state{cursor_item=empty}, SlotNo, {replace, CursorItem});
+                               NewInv = mc_erl_inventory:update_slot(Writer, State#state.player#player.inventory, SlotNo, {replace, CursorItem}),
+                               State#state{cursor_item=empty, player=State#state.player#player{inventory=NewInv}};
                            Equal ->
-                               {NewInv, Rest} = inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem),
+                               {NewInv, Rest} = mc_erl_inventory:inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem),
                                State#state{player=MyPlayer#player{inventory=NewInv}, cursor_item=Rest};
                            true ->
-                               update_slot(State#state{cursor_item=SelectedSlot}, SlotNo, {replace, CursorItem})
+                               NewInv = mc_erl_inventory:update_slot(Writer, State#state.player#player.inventory, SlotNo, {replace, CursorItem}),
+                               State#state{cursor_item=SelectedSlot, player=State#state.player#player{inventory=NewInv}}
                        end;
 
                    {packet, {window_click, [0, SlotNo, 1, _TransactionId, false, _Item]}} -> % right click
-                       SelectedSlot = get_slot(State, SlotNo),
+                       SelectedSlot = mc_erl_inventory:get_slot(State#state.player#player.inventory, SlotNo),
                        CursorItem = State#state.cursor_item,
-                       Equal = items_equal(SelectedSlot, CursorItem),
+                       Equal = mc_erl_inventory:items_equal(SelectedSlot, CursorItem),
                        case {CursorItem, SelectedSlot, Equal} of
                            {empty, empty, _} -> State;
                            {empty, #slot{count=Count}, _} ->
                                SelectedCount = Count div 2,
                                CursorCount = Count - SelectedCount,
-                               update_slot(State#state{cursor_item=SelectedSlot#slot{count=CursorCount}}, SlotNo, {replace, SelectedSlot#slot{count=SelectedCount}});
+                               NewInv = mc_erl_inventory:update_slot(Writer, State#state.player#player.inventory, SlotNo, {replace, SelectedSlot#slot{count=SelectedCount}}),
+                               State#state{cursor_item=SelectedSlot#slot{count=CursorCount}, player=State#state.player#player{inventory=NewInv}};
                            {#slot{}, #slot{}, false} ->
-                               update_slot(State#state{cursor_item=SelectedSlot}, SlotNo, {replace, CursorItem});
+                               NewInv = mc_erl_inventory:update_slot(Writer, State#state.player#player.inventory, SlotNo, {replace, CursorItem}),
+                               State#state{cursor_item=SelectedSlot, player=State#state.player#player{inventory=NewInv}};
                            {#slot{count=CursorCount}, empty, _} ->
-                               {NewInv, empty} = inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem#slot{count=1}),
+                               {NewInv, empty} = mc_erl_inventory:inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem#slot{count=1}),
                                NewCursorSlot = case CursorCount of
                                                    1 -> empty;
                                                    OldCount -> CursorItem#slot{count=OldCount-1}
                                                end,
                                State#state{cursor_item=NewCursorSlot, player=State#state.player#player{inventory=NewInv}};
                            {#slot{count=CursorCount}, #slot{}, true} ->
-                               case inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem#slot{count=1}) of
+                               case mc_erl_inventory:inventory_add_to_stack(Writer, MyPlayer#player.inventory, SlotNo, CursorItem#slot{count=1}) of
                                    {NewInv, empty} ->
                                        NewCursorSlot = case CursorCount of
                                                            1 -> empty;
@@ -261,21 +263,27 @@ handle_cast(Req, State) ->
                        end;
 
                    {packet, {window_click, [0, SlotNo, _, _TransactionId, true, _Item]}} -> % shift click
-                       SelectedSlot = get_slot(MyPlayer#player.inventory, SlotNo),
+                       Inv = MyPlayer#player.inventory,
+                       SelectedSlot = mc_erl_inventory:get_slot(Inv, SlotNo),
+                       Inv2 = mc_erl_inventory:update_slot(Writer, Inv, SlotNo, empty),
                        if
                            SlotNo >= 9, SlotNo =< 35 ->
-                               case inventory_add(Writer, MyPlayer#player.inventory, 36, 44, SelectedSlot) of
+                               case mc_erl_inventory:inventory_add(Writer, Inv2, 36, 44, SelectedSlot) of
                                    {NewInv, empty} ->
                                        State#state{player=State#state.player#player{inventory=NewInv}};
                                    {NewInv, Rest} ->
-                                       update_slot(State#state{player=State#state.player#player{inventory=NewInv}}, SlotNo, Rest)
+                                       io:format("rest1~n"),
+                                       NewInv2 = mc_erl_inventory:update_slot(Writer, NewInv, SlotNo, Rest),
+                                       State#state{player=State#state.player#player{inventory=NewInv2}}
                                end;
                            SlotNo >= 36, SlotNo =< 44 ->
-                               case inventory_add(Writer, MyPlayer#player.inventory, 9, 35, SelectedSlot) of
+                               case mc_erl_inventory:inventory_add(Writer, Inv2, 9, 35, SelectedSlot) of
                                    {NewInv, empty} ->
                                        State#state{player=State#state.player#player{inventory=NewInv}};
                                    {NewInv, Rest} ->
-                                       update_slot(State#state{player=State#state.player#player{inventory=NewInv}}, SlotNo, Rest)
+                                       io:format("rest2~n"),
+                                       NewInv2 = mc_erl_inventory:update_slot(Writer, NewInv, SlotNo, Rest),
+                                       State#state{player=State#state.player#player{inventory=NewInv2}}
                                end;
                            true ->
                                State
@@ -509,130 +517,18 @@ move_known_entity(Entity, State) when is_record(Entity, entity) ->
 send_player_list(State) ->
     Writer = State#state.writer,
     Players = mc_erl_entity_manager:get_all_players(),
-    lists:foreach(fun(Player) -> write(Writer, {player_list_item, [Player#entity.name, true, 1]}) end, Players).
+    lists:foreach(fun(Player) -> write(Writer, {player_list_item,
+                                                [Player#entity.name, true, 1]}) end,
+                  Players).
 
 send_player_abilities(State) when is_record(State, state) ->
     Player = State#state.player,
     CanFly = case Player#player.can_fly of true -> 1; false -> 0 end,
     Creative = case Player#player.mode of survival -> 0; creative -> 1 end,
     Flags = <<0:4, 0:1, CanFly:1, 0:1, Creative:1>>,
-    write(State#state.writer, {player_abilities, [Flags, Player#player.fly_speed, Player#player.walk_speed]}).
+    write(State#state.writer, {player_abilities, [Flags, Player#player.fly_speed,
+                                                  Player#player.walk_speed]}).
 
-% === inventory ===
-
-send_inventory(State) ->
-    Writer = State#state.writer,
-    write(Writer, {window_items, [0, array:to_list(State#state.player#player.inventory)]}).
-
-%% action = reduce | {replace, Slot} | empty
-update_slot(State, SlotNo, Action) ->
-    Writer = State#state.writer,
-    Player = State#state.player,
-    Inv = Player#player.inventory,
-    NewSlot = case Action of
-                  empty ->
-                      empty;
-                  reduce ->
-                      case array:get(SlotNo, Inv) of
-                          empty -> empty;
-                          #slot{count=1} -> empty;
-                          #slot{} = S -> S#slot{count=S#slot.count-1}
-                      end;
-                  {replace, Slot} -> Slot
-              end,
-    NewInv = array:set(SlotNo, NewSlot, Inv),
-    write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
-    State#state{player=Player#player{inventory=NewInv}}.
-
-get_slot(State, SlotNo) when is_record(State, state) ->
-    array:get(SlotNo, State#state.player#player.inventory);
-get_slot(Inventory, SlotNo) ->
-    array:get(SlotNo, Inventory).
-
-items_equal(empty, empty) -> true;
-items_equal(_, empty) -> false;
-items_equal(empty, _) -> false;
-items_equal(Slot1, Slot2) when is_record(Slot1, slot), is_record(Slot2, slot) ->
-    Slot1#slot.id =:= Slot2#slot.id
-    andalso Slot1#slot.metadata =:= Slot2#slot.metadata
-    andalso Slot1#slot.enchantments =:= Slot2#slot.enchantments.
-
-inventory_add(State, #slot{}=Slot) when is_record(State, state) ->
-    {Inventory, Rest} = inventory_add(State#state.writer, State#state.player#player.inventory, 9, 44, Slot),
-    {State#state{player=State#state.player#player{inventory=Inventory}}, Rest}.
-
-inventory_add(_Writer, Inventory, _SlotNo, _EndSlot, empty) ->
-    {Inventory, empty};
-inventory_add(Writer, Inventory, SlotNo, EndSlot, Rest) when EndSlot =:= SlotNo-1 ->
-    inventory_add_to_free_slot(Writer, Inventory, 9, 44, Rest);
-inventory_add(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count, metadata=Metadata, enchantments=Enchantments}=Slot) ->
-    MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
-    case array:get(SlotNo, Inventory) of
-        #slot{id=BlockId, count=OldCount, metadata=Metadata, enchantments=Enchantments} ->
-            if
-                OldCount >= MaxStack ->
-                    inventory_add(Writer, Inventory, SlotNo+1, EndSlot, Slot);
-                OldCount+Count > MaxStack ->
-                    NewSlot = Slot#slot{count=MaxStack},
-                    NewInv = array:set(SlotNo, NewSlot, Inventory),
-                    write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
-                    RestCount = OldCount+Count - MaxStack,
-                    inventory_add(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
-                true ->
-                    NewSlot = Slot#slot{count=OldCount+Count},
-                    NewInv = array:set(SlotNo, NewSlot, Inventory),
-                    write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
-                    {NewInv, empty}
-            end;
-        _ ->
-            inventory_add(Writer, Inventory, SlotNo+1, EndSlot, Slot)
-    end.
-inventory_add_to_free_slot(_Writer, Inventory, SlotNo, EndSlot, Rest) when EndSlot =:= SlotNo-1 ->
-    {Inventory, Rest};
-inventory_add_to_free_slot(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count}=Slot) ->
-    MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
-    case array:get(SlotNo, Inventory) of
-        empty ->
-            if
-                Count > MaxStack ->
-                    NewSlot = Slot#slot{count=MaxStack},
-                    NewInv = array:set(SlotNo, NewSlot, Inventory),
-                    write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
-                    RestCount = Count - MaxStack,
-                    inventory_add_to_free_slot(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
-                true ->
-                    NewInv = array:set(SlotNo, Slot, Inventory),
-                    write(Writer, {set_slot, [0, SlotNo, Slot]}),
-                    {NewInv, empty}
-            end;
-        _ ->
-            inventory_add_to_free_slot(Writer, Inventory, SlotNo+1, EndSlot, Slot)
-    end.
-
-inventory_add_to_stack(Writer, Inventory, SlotNo, #slot{id=BlockId, count=Count}=Slot) ->
-    MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
-    case array:get(SlotNo, Inventory) of
-        #slot{count=OldCount} ->
-            if
-                OldCount >= MaxStack ->
-                    {Inventory, Slot};
-                OldCount+Count > MaxStack ->
-                    NewSlot = Slot#slot{count=MaxStack},
-                    NewInv = array:set(SlotNo, NewSlot, Inventory),
-                    write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
-                    RestCount = OldCount+Count - MaxStack,
-                    {NewInv, Slot#slot{count=RestCount}};
-                true ->
-                    NewSlot = Slot#slot{count=OldCount+Count},
-                    NewInv = array:set(SlotNo, NewSlot, Inventory),
-                    write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
-                    {NewInv, empty}
-            end;
-        empty ->
-            NewInv = array:set(SlotNo, Slot, Inventory),
-            write(Writer, {set_slot, [0, SlotNo, Slot]}),
-            {NewInv, empty}
-    end.
 
 % ==== Checks if location is in visible range
 in_range({X, Y, Z}, State) ->
