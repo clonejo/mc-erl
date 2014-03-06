@@ -45,10 +45,13 @@ inventory_add(_Writer, Inventory, _SlotNo, _EndSlot, empty) ->
     {Inventory, empty};
 inventory_add(Writer, Inventory, SlotNo, EndSlot, Rest) when EndSlot =:= SlotNo-1 ->
     inventory_add_to_free_slot(Writer, Inventory, 9, 44, Rest);
-inventory_add(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count, metadata=Metadata, enchantments=Enchantments}=Slot) ->
+inventory_add(Writer, Inventory, SlotNo, EndSlot,
+              #slot{id=BlockId, count=Count, metadata=Metadata,
+                    enchantments=Enchantments}=Slot) ->
     MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
     case array:get(SlotNo, Inventory) of
-        #slot{id=BlockId, count=OldCount, metadata=Metadata, enchantments=Enchantments} ->
+        #slot{id=BlockId, count=OldCount, metadata=Metadata,
+              enchantments=Enchantments} ->
             if
                 OldCount >= MaxStack ->
                     inventory_add(Writer, Inventory, SlotNo+1, EndSlot, Slot);
@@ -57,7 +60,8 @@ inventory_add(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count,
                     NewInv = array:set(SlotNo, NewSlot, Inventory),
                     mc_erl_player_core:write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
                     RestCount = OldCount+Count - MaxStack,
-                    inventory_add(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
+                    inventory_add(Writer, NewInv, SlotNo+1, EndSlot,
+                                  Slot#slot{count=RestCount});
                 true ->
                     NewSlot = Slot#slot{count=OldCount+Count},
                     NewInv = array:set(SlotNo, NewSlot, Inventory),
@@ -71,7 +75,8 @@ inventory_add(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count,
                     NewInv = array:set(SlotNo, NewSlot, Inventory),
                     mc_erl_player_core:write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
                     RestCount = Count - MaxStack,
-                    inventory_add(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
+                    inventory_add(Writer, NewInv, SlotNo+1, EndSlot,
+                                  Slot#slot{count=RestCount});
                 true ->
                     NewSlot = Slot#slot{count=Count},
                     NewInv = array:set(SlotNo, NewSlot, Inventory),
@@ -81,9 +86,12 @@ inventory_add(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count,
         _ ->
             inventory_add(Writer, Inventory, SlotNo+1, EndSlot, Slot)
     end.
-inventory_add_to_free_slot(_Writer, Inventory, SlotNo, EndSlot, Rest) when EndSlot =:= SlotNo-1 ->
+
+inventory_add_to_free_slot(_Writer, Inventory, SlotNo, EndSlot, Rest)
+  when EndSlot =:= SlotNo-1 ->
     {Inventory, Rest};
-inventory_add_to_free_slot(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId, count=Count}=Slot) ->
+inventory_add_to_free_slot(Writer, Inventory, SlotNo, EndSlot,
+                           #slot{id=BlockId, count=Count}=Slot) ->
     MaxStack = (mc_erl_blocks:block_info(BlockId))#block_type.maxstack,
     case array:get(SlotNo, Inventory) of
         empty ->
@@ -93,7 +101,8 @@ inventory_add_to_free_slot(Writer, Inventory, SlotNo, EndSlot, #slot{id=BlockId,
                     NewInv = array:set(SlotNo, NewSlot, Inventory),
                     mc_erl_player_core:write(Writer, {set_slot, [0, SlotNo, NewSlot]}),
                     RestCount = Count - MaxStack,
-                    inventory_add_to_free_slot(Writer, NewInv, SlotNo+1, EndSlot, Slot#slot{count=RestCount});
+                    inventory_add_to_free_slot(Writer, NewInv, SlotNo+1, EndSlot,
+                                               Slot#slot{count=RestCount});
                 true ->
                     NewInv = array:set(SlotNo, Slot, Inventory),
                     mc_erl_player_core:write(Writer, {set_slot, [0, SlotNo, Slot]}),
