@@ -20,9 +20,9 @@ stop(_State) -> mc_erl_server_sup:shutdown().
 
 %% to be called from OS' command line
 os_setup() ->
-    lager:info("~p~n", [mnesia:create_schema([node()])]),
+    ok = mnesia:create_schema([node()]),
     mnesia:start(),
-    lager:info("~p~n", [setup()]),
+    {atomic, ok} = setup(),
     mnesia:stop(),
     halt().
 
