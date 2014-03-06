@@ -3,6 +3,7 @@
 *.beam
 *.dump
 *.log
+*.log.*
 *.swp
 *.zip
 
